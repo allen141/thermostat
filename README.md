@@ -12,11 +12,13 @@ Telemetry is retained in SQLite. The dashboard provides independent **T10** and 
 1. Copy `.env.example` to `.env` and enter Resideo credentials if the T10 cloud fallback is required.
 2. Run `docker compose up -d --build` or `python3 server.py` after installing `requirements.txt`.
 3. Open `http://127.0.0.1:8787`.
-4. For each local thermostat, put the accessory into HomeKit pairing mode, select **Discover accessories**, choose the dashboard unit, and enter its eight-digit code.
+4. For each local thermostat, put the accessory into HomeKit pairing mode, select **Add / link thermostat**, choose the dashboard unit, and enter its eight-digit code.
 
 For the Sensi 1F95U-42WF, the HomeKit code is available from the thermostat's Wi-Fi/HomeKit setup screen. If discovery says the accessory is already paired, the recorder deliberately does not reset or unpair it; enable pairing from its existing controller or remove it there first.
 
 The server uses host networking because HomeKit discovery relies on local multicast DNS. Pairing credentials remain in `data/homekit-pairings.json`, and telemetry remains in `data/thermostat.sqlite`; protect and back up both files.
+Pairing credentials and unit mappings survive service restarts and image replacements because the production container bind-mounts the same `data/` directory. On startup, each accessory reconnects independently. A non-recording health check runs every `HOMEKIT_RECONNECT_SECONDS` in event-only mode; failures are shown as **Reconnecting** and retried with bounded exponential backoff without requiring another service restart. Restore `homekit-pairings.json` and `thermostat.sqlite` together when recovering from backup.
+
 
 ## Data migration
 

@@ -11,7 +11,7 @@ class HomeKitManager:
  def __init__(self,data_dir:Path):
   self.data_dir=data_dir; self.pairings_file=data_dir/"homekit-pairings.json"; self.db_path=data_dir/"thermostat.sqlite"
   self.loop=self.controller=None; self.discoveries={}; self.characteristics={}; self.accessory_meta={}; self.pairings={}; self.poll_state={}; self.last_error=None
-  self.poll_seconds=max(0,int(os.environ.get("HOMEKIT_POLL_SECONDS","30"))); self.ready=threading.Event(); self.thread=threading.Thread(target=self._thread_main,daemon=True)
+  self.poll_seconds=max(0,int(os.environ.get("HOMEKIT_POLL_SECONDS","30"))); self.reconnect_seconds=max(5,int(os.environ.get("HOMEKIT_RECONNECT_SECONDS","60"))); self.supervisors={}; self.dispatchers=set(); self.ready=threading.Event(); self.thread=threading.Thread(target=self._thread_main,daemon=True)
  def start(self): self.thread.start(); self.ready.wait(15)
  def _thread_main(self):
   self.loop=asyncio.new_event_loop(); asyncio.set_event_loop(self.loop); self.loop.run_until_complete(self._main())
@@ -22,12 +22,26 @@ class HomeKitManager:
    from zeroconf.asyncio import AsyncServiceBrowser,AsyncZeroconf
    self.zeroconf=AsyncZeroconf(); self.browser=AsyncServiceBrowser(self.zeroconf.zeroconf,[HAP_TYPE_TCP,HAP_TYPE_UDP],handlers=[lambda **kwargs:None])
    self.controller=Controller(async_zeroconf_instance=self.zeroconf); await self.controller.async_start(); self.controller.load_data(str(self.pairings_file))
-   for alias,pairing in list(self.controller.aliases.items()): await self._setup_pairing(alias,pairing)
+   for alias,pairing in list(self.controller.aliases.items()): self.pairings[alias]=pairing; self._start_supervisor(alias,pairing)
   except Exception as exc: self.last_error=str(exc)
   finally:
-   if self.poll_seconds:self.loop.create_task(self._heartbeat())
    self.ready.set()
   await asyncio.Event().wait()
+ def _start_supervisor(self,alias,pairing):
+  task=self.supervisors.get(alias)
+  if not task or task.done():self.supervisors[alias]=self.loop.create_task(self._supervise_pairing(alias,pairing))
+ def _mark_retrying(self,alias,error,attempts):
+  delay=min(self.reconnect_seconds*(2**min(max(0,attempts-1),3)),300); self.poll_state.setdefault(alias,{}).update(connection_state="retrying",connection_error=str(error),retry_attempts=attempts,next_retry_at=datetime.fromtimestamp(datetime.now(timezone.utc).timestamp()+delay,timezone.utc).isoformat(timespec="seconds")); return delay
+ async def _supervise_pairing(self,alias,pairing):
+  delay=0; attempts=0
+  while True:
+   if delay:await asyncio.sleep(delay)
+   try:
+    if self.poll_state.get(alias,{}).get("connection_state")!="connected":await self._setup_pairing(alias,pairing)
+    else:await self._poll_pairing(alias,pairing,store_sample=bool(self.poll_seconds))
+    attempts=0; delay=self.poll_seconds or self.reconnect_seconds
+   except asyncio.CancelledError:raise
+   except Exception as exc:attempts+=1;delay=self._mark_retrying(alias,exc,attempts)
  def run(self,coro,timeout=30):
   if not self.loop or not self.controller: raise RuntimeError("HomeKit controller is not ready")
   return asyncio.run_coroutine_threadsafe(coro,self.loop).result(timeout)
@@ -49,8 +63,8 @@ class HomeKitManager:
    source=self._source(alias)
    if unit_id and (not source or source["unit_id"]!=unit_id):continue
    state=self.poll_state.get(alias,{})
-   items.append({"alias":alias,"unit_id":source["unit_id"] if source else None,"name":self.accessory_meta.get(alias,{}).get("name",alias),"model":self.accessory_meta.get(alias,{}).get("model",""),"current":[dict(v) for (a,_aid,_iid),v in self.characteristics.items() if a==alias],"last_poll_at":state.get("last_poll_at"),"last_poll_error":state.get("last_poll_error")})
-  return {"ready":self.ready.is_set(),"paired":bool(items),"aliases":[x["alias"] for x in items],"accessories":items,"characteristic_count":sum(len(x["current"]) for x in items),"current":[v for x in items for v in x["current"]],"last_error":self.last_error,"collection_mode":"events_and_polling" if self.poll_seconds else "events_only","poll_seconds":self.poll_seconds}
+   items.append({"alias":alias,"unit_id":source["unit_id"] if source else None,"name":self.accessory_meta.get(alias,{}).get("name",alias),"model":self.accessory_meta.get(alias,{}).get("model",""),"current":[dict(v) for (a,_aid,_iid),v in self.characteristics.items() if a==alias],"last_poll_at":state.get("last_poll_at"),"last_poll_error":state.get("last_poll_error"),"connection_state":state.get("connection_state","connecting"),"connection_error":state.get("connection_error"),"retry_attempts":state.get("retry_attempts",0),"next_retry_at":state.get("next_retry_at"),"last_connected_at":state.get("last_connected_at")})
+  return {"ready":self.ready.is_set(),"paired":bool(items),"connected":any(x["connection_state"]=="connected" for x in items),"aliases":[x["alias"] for x in items],"accessories":items,"characteristic_count":sum(len(x["current"]) for x in items),"current":[v for x in items for v in x["current"]],"last_error":self.last_error,"collection_mode":"events_and_polling" if self.poll_seconds else "events_with_healthcheck","poll_seconds":self.poll_seconds}
  async def _discover(self):
   found=[]; self.discoveries={}
   async for d in self.controller.async_discover(timeout=8):
@@ -64,7 +78,10 @@ class HomeKitManager:
   if d.paired:raise RuntimeError("Accessory is already paired. Do not reset it automatically; remove it from the other controller or enable pairing there first.")
   desc=d.description; name=str(getattr(desc,"name","HomeKit accessory")); model=str(getattr(desc,"model","")); base=slug(f"{unit_id or model or name}-{device_id[-6:]}"); alias=base; n=2
   while alias in self.controller.aliases:alias=f"{base}-{n}";n+=1
-  finish=await d.async_start_pairing(alias); pairing=await finish(code); self.controller.aliases[alias]=pairing; self.controller.pairings[pairing.id]=pairing; self.controller.save_data(str(self.pairings_file)); self._ensure_source(alias,unit_id,name,model); await self._setup_pairing(alias,pairing,name,model); return self.status()
+  finish=await d.async_start_pairing(alias); pairing=await finish(code); self.controller.aliases[alias]=pairing; self.controller.pairings[pairing.id]=pairing; self.controller.save_data(str(self.pairings_file)); self._ensure_source(alias,unit_id,name,model); self.pairings[alias]=pairing
+  try:await self._setup_pairing(alias,pairing,name,model)
+  except Exception as exc:self._mark_retrying(alias,exc,1)
+  self._start_supervisor(alias,pairing); return self.status()
  def pair(self,device_id,code,unit_id=None):
   digits=re.sub(r"\D","",code)
   if not re.fullmatch(r"\d{8}",digits):raise ValueError("Enter the eight digits shown on the thermostat")
@@ -78,8 +95,10 @@ class HomeKitManager:
     for char in service.get("characteristics",[]):
      pk=(aid,char["iid"]); key=(alias,*pk); meta={"alias":alias,"aid":aid,"iid":char["iid"],"type":char.get("type"),"description":char.get("description") or char.get("type"),"service_type":service.get("type"),"value":char.get("value"),"perms":char.get("perms",[])}; self.characteristics[key]=meta; self._store_event(alias,meta,"snapshot")
      if "ev" in char.get("perms",[]):events.add(pk)
-  self._store_sample(alias,"snapshot"); pairing.dispatcher_connect(lambda changes,a=alias:self._handle_changes(a,changes))
+  self._store_sample(alias,"snapshot");
+  if alias not in self.dispatchers:pairing.dispatcher_connect(lambda changes,a=alias:self._handle_changes(a,changes));self.dispatchers.add(alias)
   if events:await pairing.subscribe(events)
+  self.poll_state.setdefault(alias,{}).update(connection_state="connected",connection_error=None,retry_attempts=0,next_retry_at=None,last_connected_at=utcnow())
   self.last_error=None
  def _handle_changes(self,alias,changes):
   for pk,change in changes.items():
@@ -90,7 +109,7 @@ class HomeKitManager:
   with sqlite3.connect(self.db_path,timeout=30) as conn:
    conn.execute("CREATE TABLE IF NOT EXISTS homekit_events(id INTEGER PRIMARY KEY,occurred_at TEXT NOT NULL,alias TEXT NOT NULL,aid INTEGER,iid INTEGER,characteristic TEXT,value_json TEXT,source TEXT NOT NULL,raw_json TEXT NOT NULL)")
    conn.execute("INSERT INTO homekit_events(occurred_at,alias,aid,iid,characteristic,value_json,source,raw_json) VALUES(?,?,?,?,?,?,?,?)",(utcnow(),alias,safe.get("aid"),safe.get("iid"),safe.get("description") or safe.get("type"),json.dumps(safe.get("value")),event_source,json.dumps({**safe,"unit_id":source["unit_id"]},separators=(",",":"))))
- async def _poll_pairing(self,alias,pairing):
+ async def _poll_pairing(self,alias,pairing,store_sample=True):
   chars={(aid,iid):meta for (a,aid,iid),meta in self.characteristics.items() if a==alias}; keys={k for k,m in chars.items() if str(m.get("service_type","")).startswith("0000004A") and "pr" in m.get("perms",[])}
   if not keys:raise RuntimeError("No readable thermostat characteristics found")
   readings=await pairing.get_characteristics(keys); errors=[]; updated=0
@@ -99,13 +118,9 @@ class HomeKitManager:
    target=(alias,*key)
    if "value" in result and target in self.characteristics:self.characteristics[target]["value"]=result["value"];updated+=1
   if not updated:raise RuntimeError("Thermostat read returned no values"+(f": {', '.join(errors)}" if errors else ""))
-  self._store_sample(alias,"poll"); self.poll_state[alias]={"last_poll_at":utcnow(),"last_poll_error":"; ".join(errors) if errors else None}
- async def _heartbeat(self):
-  while True:
-   await asyncio.sleep(self.poll_seconds)
-   for alias,pairing in list(self.pairings.items()):
-    try:await self._poll_pairing(alias,pairing)
-    except Exception as exc:self.poll_state.setdefault(alias,{})["last_poll_error"]=str(exc)
+
+  if store_sample:self._store_sample(alias,"poll")
+  self.poll_state.setdefault(alias,{}).update(last_poll_at=utcnow(),last_poll_error="; ".join(errors) if errors else None,connection_state="connected",connection_error=None,retry_attempts=0,next_retry_at=None,last_connected_at=utcnow())
  def poll(self,unit_id):
   with sqlite3.connect(self.db_path,timeout=30) as conn:row=conn.execute("SELECT external_id FROM unit_sources WHERE unit_id=? AND kind='homekit' AND enabled=1",(unit_id,)).fetchone()
   if not row or row[0] not in self.pairings:raise RuntimeError(f"{unit_id} is not paired through HomeKit")

@@ -1,4 +1,4 @@
-import json,sqlite3,tempfile,unittest
+import asyncio,json,sqlite3,tempfile,unittest
 from pathlib import Path
 import server
 from homekit_manager import HomeKitManager
@@ -27,6 +27,22 @@ class MultiUnitTests(unittest.TestCase):
  def test_homekit_characteristics_are_namespaced_by_alias(self):
   manager=HomeKitManager(Path(self.temp.name));manager.characteristics={("t10-alias",1,10):{"service_type":"0000004A","type":"00000011","value":20},("sensi-alias",1,10):{"service_type":"0000004A","type":"00000011","value":25}}
   self.assertEqual(20,manager._values("t10-alias")["current_temp_c"]);self.assertEqual(25,manager._values("sensi-alias")["current_temp_c"])
+ def test_homekit_supervisor_retries_after_startup_failure(self):
+  async def scenario():
+   manager=HomeKitManager(Path(self.temp.name));manager.reconnect_seconds=.01;attempts=[]
+   async def setup(alias,pairing):
+    attempts.append(alias)
+    if len(attempts)==1:raise OSError("thermostat offline")
+    manager.poll_state.setdefault(alias,{}).update(connection_state="connected",connection_error=None)
+   async def healthcheck(alias,pairing,store_sample=True):
+    manager.poll_state.setdefault(alias,{}).update(connection_state="connected",connection_error=None)
+   manager._setup_pairing=setup;manager._poll_pairing=healthcheck
+   task=asyncio.create_task(manager._supervise_pairing("sensi-test",object()))
+   await asyncio.sleep(.04);task.cancel()
+   try:await task
+   except asyncio.CancelledError:pass
+   self.assertGreaterEqual(len(attempts),2);self.assertEqual("connected",manager.poll_state["sensi-test"]["connection_state"]);self.assertIsNone(manager.poll_state["sensi-test"]["connection_error"])
+  asyncio.run(scenario())
  def test_unknown_unit_is_rejected(self):
   with self.assertRaises(KeyError):server.history_for("garage",24)
 

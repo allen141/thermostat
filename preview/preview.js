@@ -70,7 +70,7 @@
   function previewUnit(id) {
     const sensi = id === "sensi";
     const sample = sampleAt(startedAt);
-    return {id, display_name: sensi ? "Sensi" : "T10", vendor: sensi ? "Copeland" : "Resideo", model: sensi ? "1F95U-42WF" : "T10", active_source: `${id}-homekit`, connected: true, resideo_connected: !sensi, latest: {...sample, unit_id: id, source_id: `${id}-homekit`, indoor_temp: sample.indoor_temp + (sensi ? 3.1 : 0), cool_setpoint: sample.cool_setpoint + (sensi ? 3.1 : 0)}, sources: [{id: `${id}-homekit`, unit_id: id, kind: "homekit", enabled: 1}], homekit: {ready: true, paired: true, collection_mode: "events_only", poll_seconds: 0, accessories: [{unit_id: id, name: sensi ? "Upstairs Sensi" : "Living Room T10", model: sensi ? "1F95U-42WF" : "T10"}]}};
+    return {id, display_name: sensi ? "Sensi" : "T10", vendor: sensi ? "Copeland" : "Resideo", model: sensi ? "1F95U-42WF" : "T10", active_source: `${id}-homekit`, connected: true, resideo_connected: !sensi, latest: {...sample, unit_id: id, source_id: `${id}-homekit`, indoor_temp: sample.indoor_temp + (sensi ? 3.1 : 0), cool_setpoint: sample.cool_setpoint + (sensi ? 3.1 : 0)}, sources: [{id: `${id}-homekit`, unit_id: id, kind: "homekit", enabled: 1}], homekit: {ready: true, paired: true, collection_mode: "events_only", poll_seconds: 0, accessories: [{unit_id: id, name: sensi ? "Upstairs Sensi" : "Living Room T10", model: sensi ? "1F95U-42WF" : "T10", connection_state: "connected", last_connected_at: new Date(startedAt).toISOString()}]}};
   }
 
   window.fetch = (input, options = {}) => {
