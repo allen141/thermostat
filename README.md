@@ -60,6 +60,10 @@ Hosted GitHub Pages deployment is additionally available when the repository sup
 
 Updates to `main` are validated and published as Linux/AMD64 images at `ghcr.io/allen141/thermostat`. Production uses the locally built, pull-based updater documented in [`ops/deployer/README.md`](ops/deployer/README.md). The updater smoke-tests each image, retains one known-good rollback, preserves the bind-mounted `data/` directory, and does not store a GitHub credential on the server.
 
+## Developer guide
+
+Development conventions, required validation, release behavior, live-server architecture, and updater-management safety rules are documented in [`AGENTS.md`](AGENTS.md).
+
 ## Diagnostic workflow
 
 - Leave the collector running continuously.
