@@ -50,6 +50,10 @@ The dashboard detail view is rooted at `[data-component="thermostat-detail"]`. I
 
 Runtime can be viewed over 7, 30, 90, 180, or 365 days and grouped by day or month. Long sample gaps are excluded from totals and reflected in the coverage metric.
 
+## Review previews
+
+Every push to a non-`main` branch runs `.github/workflows/preview-pages.yml`. The workflow publishes the static dashboard to the repository's GitHub Pages site and adds or updates a preview link on the associated pull request. The preview uses generated fixture data from `preview/preview.js`; it never receives Resideo credentials, HomeKit pairing material, the SQLite database, or live thermostat data. GitHub Pages is a separate review environment and does not replace or update the Docker-based live deployment.
+
 ## Diagnostic workflow
 
 - Leave the collector running continuously.

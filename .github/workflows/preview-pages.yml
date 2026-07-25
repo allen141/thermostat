@@ -1,0 +1,101 @@
+name: Deploy review preview
+
+on:
+  push:
+    branches-ignore:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: github-pages-preview
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build static review site
+        run: |
+          mkdir -p _site
+          cp -R static/. _site/
+          cp preview/preview.js _site/preview.js
+          sed -i 's|href="/style.css|href="./style.css|g' _site/index.html
+          sed -i 's|src="/app.js|src="./app.js|g' _site/index.html
+          sed -i 's|<script src="./app.js|<script src="./preview.js"></script>\n  <script src="./app.js|' _site/index.html
+          touch _site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy preview
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Add preview link to pull request
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.deployment.outputs.page_url }}
+        with:
+          script: |
+            const marker = "<!-- thermostat-pages-preview -->";
+            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+            });
+            for (const pull of pulls.data) {
+              const body = [
+                marker,
+                "## Preview deployment",
+                "",
+                `[Open the temporary dashboard preview](${process.env.PREVIEW_URL})`,
+                "",
+                `This is a fixture-backed GitHub Pages build from \`${context.ref.replace("refs/heads/", "")}\`. It is isolated from the live thermostat deployment and contains no production credentials or data.`,
+              ].join("\n");
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pull.number,
+              });
+              const existing = comments.find(comment =>
+                comment.user.type === "Bot" && comment.body.includes(marker)
+              );
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pull.number,
+                  body,
+                });
+              }
+            }
