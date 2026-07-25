@@ -1,0 +1,156 @@
+name: Build review preview
+
+on:
+  push:
+    branches-ignore:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: review-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build preview artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v7
+
+      - name: Build static review site
+        run: |
+          mkdir -p _site
+          cp -R static/. _site/
+          cp preview/preview.js _site/preview.js
+          sed -i 's|href="/style.css|href="./style.css|g' _site/index.html
+          sed -i 's|src="/app.js|src="./app.js|g' _site/index.html
+          sed -i 's|<script src="./app.js|<script src="./preview.js"></script>\n  <script src="./app.js|' _site/index.html
+          touch _site/.nojekyll
+
+      - name: Upload downloadable preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: thermostat-review-preview
+          path: _site
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload Pages artifact
+        if: vars.ENABLE_PAGES_PREVIEW == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  review-link:
+    name: Add artifact link to pull request
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add preview artifact link
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const marker = "<!-- thermostat-review-preview -->";
+            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+            });
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            for (const pull of pulls.data) {
+              const body = [
+                marker,
+                "## Review preview",
+                "",
+                `[Download the fixture-backed dashboard preview](${runUrl}#artifacts)`,
+                "",
+                "Download **thermostat-review-preview**, unzip it, and open `index.html`. The artifact expires after 14 days and is replaced on each push.",
+                "",
+                "This preview is isolated from the live deployment and contains no production credentials or thermostat data.",
+              ].join("\n");
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pull.number,
+              });
+              const existing = comments.find(comment =>
+                comment.user.type === "Bot" && comment.body.includes(marker)
+              );
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pull.number,
+                  body,
+                });
+              }
+            }
+
+  deploy-pages:
+    name: Deploy live Pages preview
+    if: vars.ENABLE_PAGES_PREVIEW == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+      - name: Replace artifact link with hosted preview
+        uses: actions/github-script@v9
+        env:
+          PREVIEW_URL: ${{ steps.deployment.outputs.page_url }}
+        with:
+          script: |
+            const marker = "<!-- thermostat-review-preview -->";
+            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+            });
+            for (const pull of pulls.data) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pull.number,
+              });
+              const existing = comments.find(comment =>
+                comment.user.type === "Bot" && comment.body.includes(marker)
+              );
+              const body = [
+                marker,
+                "## Review preview",
+                "",
+                `[Open the hosted dashboard preview](${process.env.PREVIEW_URL})`,
+                "",
+                "This fixture-backed GitHub Pages build is isolated from the live deployment and contains no production credentials or thermostat data.",
+              ].join("\n");
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              }
+            }

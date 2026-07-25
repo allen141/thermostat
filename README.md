@@ -44,6 +44,22 @@ No third-party Python packages are required. The server binds to localhost by
 default. OAuth tokens and history are stored in `data/thermostat.sqlite`;
 protect and back up that file.
 
+## Thermostat detail module
+
+The dashboard detail view is rooted at `[data-component="thermostat-detail"]`. Its browser API is exposed as `window.ThermostatDetailModule` and accepts a normalized object with `device`, `snapshot`, `history.samples`, and `source`. Runtime samples require only `captured_at` and `operation_mode`; temperature, humidity, setpoint, location, and device-name fields are optional. This keeps the detail view independent of Resideo or HomeKit and allows a multi-thermostat overview to supply the selected thermostat as data.
+
+Runtime can be viewed over 7, 30, 90, 180, or 365 days and grouped by day or month. Long sample gaps are excluded from totals and reflected in the coverage metric.
+
+## Review previews
+
+Every push to a non-`main` branch runs `.github/workflows/preview-pages.yml`. The workflow builds a fixture-backed static dashboard, stores it as the **thermostat-review-preview** Actions artifact for 14 days, and adds or updates the download link on the associated pull request. After download, unzip the artifact and open `index.html`.
+
+Hosted GitHub Pages deployment is additionally available when the repository supports Pages and the Actions variable `ENABLE_PAGES_PREVIEW` is set to `true`. Private repositories require a GitHub plan with private Pages support. The preview never receives Resideo credentials, HomeKit pairing material, the SQLite database, or live thermostat data, and it does not replace or update the Docker-based live deployment.
+
+## Production deployments
+
+Updates to `main` are validated and published as Linux/AMD64 images at `ghcr.io/allen141/thermostat`. Production uses the locally built, pull-based updater documented in [`ops/deployer/README.md`](ops/deployer/README.md). The updater smoke-tests each image, retains one known-good rollback, preserves the bind-mounted `data/` directory, and does not store a GitHub credential on the server.
+
 ## Diagnostic workflow
 
 - Leave the collector running continuously.

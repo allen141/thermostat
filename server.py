@@ -330,7 +330,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if path == "/api/homekit/history":
                 if not HOMEKIT_MANAGER:
                     return self.send_json({"error": "HomeKit unavailable"}, 503)
-                hours = max(1, min(24 * 90, int(query.get("hours", ["24"])[0])))
+                hours = max(1, min(24 * 365, int(query.get("hours", ["24"])[0])))
                 return self.send_json(HOMEKIT_MANAGER.history(hours))
             if path == "/api/homekit/status":
                 if not HOMEKIT_MANAGER:
@@ -395,7 +395,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     }
                 )
             if path == "/api/history":
-                hours = max(1, min(24 * 90, int(query.get("hours", ["24"])[0])))
+                hours = max(1, min(24 * 365, int(query.get("hours", ["24"])[0])))
                 cutoff = datetime.fromtimestamp(
                     time.time() - hours * 3600, timezone.utc
                 ).isoformat(timespec="seconds")

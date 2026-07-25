@@ -3,6 +3,9 @@ let hours = 24;
 let selectedHomekitDevice = null;
 let useHomekit = false;
 let history = {samples:[], transitions:[], observations:[]};
+let runtimeHistory = {samples:[], transitions:[], observations:[]};
+let runtimeDays = 30;
+let runtimeLoadedAt = 0;
 
 function fmt(v, digits=0){ return v == null ? "—" : Number(v).toFixed(digits) }
 function age(iso){
@@ -53,6 +56,8 @@ async function load(){
     if(!history.samples.length && local)history.samples=[local];
     history.observations=(history.observations||[]).map(e=>({...e,kind:e.kind||hkLabel(e.characteristic),note:e.note||hkEventDetail(e)}));if(hoverEvent&&!isGraphEvent(hoverEvent)){hoverEvent=null;hoverTime=null}
   }
+  await loadRuntimeData(false);
+  detailModule.setData({device: status.device || {device_name: homekit.paired ? "T10 local" : "Thermostat"}, snapshot: s, history: runtimeHistory, source: homekit.paired ? "HomeKit local" : "Resideo cloud"});
   drawChart();
   drawTimeline();
   $("#rawJson").textContent=JSON.stringify(status.connected ? await get("/api/raw/latest") : homekit.current,null,2);
@@ -339,3 +344,116 @@ $("#zoomIn").onclick=()=>zoomGraph(.6,1);
 $("#zoomOut").onclick=()=>zoomGraph(1.65,1);
 $("#resetZoom").onclick=()=>{graphView=null;drawChart()};
 $("#jumpLatest").onclick=jumpLatest;
+
+
+/**
+ * Reusable per-thermostat detail module.
+ * Data contract: { device, snapshot, history: {samples: []}, source }.
+ * Samples need captured_at and operation_mode; comfort fields are optional.
+ */
+class ThermostatDetailModule {
+  constructor(root){
+    this.root=root;
+    this.data={device:{},snapshot:null,history:{samples:[]},source:"Unknown"};
+  }
+  setData(data){
+    this.data={...this.data,...data};
+    const name=data.device?.device_name||data.device?.name||"Thermostat";
+    $("#summaryDeviceName").textContent=name;
+    $("#detailDeviceName").textContent=name;
+    $("#dataSource").textContent=data.source||"Unknown source";
+    $("#summaryLocation").textContent=data.device?.location_name
+      ? `${data.device.location_name} · Live comfort and equipment status`
+      : "Live comfort and equipment status";
+    this.renderRuntime();
+  }
+  renderRuntime(){
+    const days=runtimeDays;
+    const requested=$("#runtimeBucket").value;
+    const bucket=requested==="auto"?(days>90?"month":"day"):requested;
+    const result=aggregateRuntime(this.data.history?.samples||[],days,bucket);
+    const chart=$("#runtimeChart");
+    $("#periodRuntime").textContent=formatRuntime(result.runtimeMs);
+    $("#averageRuntime").textContent=formatRuntime(result.runtimeMs/Math.max(1,days));
+    $("#periodCycles").textContent=String(result.cycles);
+    $("#runtimeCoverage").textContent=`${Math.round(result.coverage*100)}%`;
+    $("#runtimeGrouping").textContent=bucket==="month"?"Monthly runtime":"Daily runtime";
+    $("#runtimeStart").textContent=new Date(result.start).toLocaleDateString(undefined,{month:"short",day:"numeric",year:days>180?"numeric":undefined});
+    $("#runtimeEnd").textContent="Today";
+    $("#runtimeEmpty").classList.toggle("hidden",result.buckets.some(x=>x.runtimeMs>0));
+    const max=Math.max(1,...result.buckets.map(x=>x.runtimeMs));
+    chart.innerHTML=result.buckets.map(item=>{
+      const height=Math.max(item.runtimeMs?2:0,Math.round(item.runtimeMs/max*100));
+      const label=item.start.toLocaleDateString(undefined,bucket==="month"?{month:"long",year:"numeric"}:{weekday:"short",month:"short",day:"numeric"});
+      return `<div class="runtime-column" tabindex="0" style="--bar-height:${height}%"><span class="runtime-bar" style="height:${height}%"></span><span class="runtime-tip">${escapeHtml(label)} · ${formatRuntime(item.runtimeMs)}</span></div>`;
+    }).join("");
+    chart.setAttribute("aria-label",`${bucket==="month"?"Monthly":"Daily"} cooling runtime for the last ${days} days. Total ${formatRuntime(result.runtimeMs)}.`);
+  }
+}
+
+function formatRuntime(ms){
+  if(!Number.isFinite(ms)||ms<=0)return "0m";
+  const minutes=Math.round(ms/60000);
+  if(minutes<60)return `${minutes}m`;
+  const h=Math.floor(minutes/60),m=minutes%60;
+  return m?`${h}h ${m}m`:`${h}h`;
+}
+function cooling(row){return String(row?.operation_mode||"").toLowerCase().includes("cool")}
+function bucketFloor(date,kind){
+  return kind==="month"?new Date(date.getFullYear(),date.getMonth(),1):new Date(date.getFullYear(),date.getMonth(),date.getDate());
+}
+function bucketNext(date,kind){
+  return kind==="month"?new Date(date.getFullYear(),date.getMonth()+1,1):new Date(date.getFullYear(),date.getMonth(),date.getDate()+1);
+}
+function aggregateRuntime(samples,days,bucketKind){
+  const end=Date.now(),start=end-days*86400000;
+  const rows=samples.map(x=>({...x,_t:new Date(x.captured_at).getTime()})).filter(x=>Number.isFinite(x._t)&&x._t>=start-86400000&&x._t<=end).sort((a,b)=>a._t-b._t);
+  const deltas=rows.slice(1).map((row,i)=>row._t-rows[i]._t).filter(x=>x>0&&x<6*3600000).sort((a,b)=>a-b);
+  const median=deltas.length?deltas[Math.floor(deltas.length/2)]:5*60000;
+  const gapLimit=useHomekit?6*3600000:Math.max(10*60000,Math.min(30*60000,median*3));
+  const buckets=[];
+  let cursor=bucketFloor(new Date(start),bucketKind);
+  while(cursor.getTime()<end){
+    const next=bucketNext(cursor,bucketKind);
+    buckets.push({start:new Date(cursor),end:next.getTime(),runtimeMs:0});
+    cursor=next;
+  }
+  let runtimeMs=0,coverageMs=0,cycles=0,previousCooling=false;
+  for(let i=0;i<rows.length;i++){
+    const row=rows[i],isCooling=cooling(row);
+    if(isCooling&&!previousCooling&&row._t>=start)cycles++;
+    previousCooling=isCooling;
+    if(i===rows.length-1)continue;
+    let a=Math.max(start,row._t),b=Math.min(end,rows[i+1]._t);
+    const rawGap=rows[i+1]._t-row._t;
+    if(b<=a||rawGap>gapLimit)continue;
+    coverageMs+=b-a;
+    if(!isCooling)continue;
+    runtimeMs+=b-a;
+    for(const item of buckets){
+      const overlap=Math.max(0,Math.min(b,item.end)-Math.max(a,item.start.getTime()));
+      item.runtimeMs+=overlap;
+    }
+  }
+  return {start,end,runtimeMs,cycles,coverage:Math.min(1,coverageMs/(days*86400000)),buckets};
+}
+
+const detailModule=new ThermostatDetailModule($("#dashboard"));
+window.ThermostatDetailModule=ThermostatDetailModule;
+window.aggregateThermostatRuntime=aggregateRuntime;
+
+async function loadRuntimeData(force){
+  if(!force&&runtimeHistory.samples.length&&Date.now()-runtimeLoadedAt<60000)return;
+  runtimeHistory=await get(useHomekit?`/api/homekit/history?hours=${runtimeDays*24}`:`/api/history?hours=${runtimeDays*24}`);
+  runtimeLoadedAt=Date.now();
+}
+async function changeRuntimeRange(){
+  runtimeDays=Number($("#runtimeDuration").value);
+  runtimeLoadedAt=0;
+  await loadRuntimeData(true);
+  detailModule.data.history=runtimeHistory;
+  detailModule.renderRuntime();
+}
+$("#runtimeDuration").onchange=()=>changeRuntimeRange().catch(e=>{$("#runtimeEmpty").textContent=e.message;$("#runtimeEmpty").classList.remove("hidden")});
+$("#runtimeBucket").onchange=()=>detailModule.renderRuntime();
+$("#pollNowTop").onclick=()=>$("#pollNow").click();
