@@ -28,6 +28,13 @@ The deployer mounts the Docker socket read-write. Access to that socket is
 equivalent to host-level control, so the deployer image is built locally from a
 reviewed commit and is never automatically replaced.
 
+## Manual release workflow
+
+In GitHub, open **Actions**, select **Validate and publish container**, choose
+**Run workflow**, and select a branch. A manual run against `main` validates,
+builds, smoke-tests, and publishes both production tags. A run against any other
+branch performs validation and the local image build only; it does not publish.
+
 ## One-time installation
 
 Do this only after the release workflow has published the first `main` image
