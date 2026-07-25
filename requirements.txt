@@ -1,0 +1,1 @@
+aiohomekit==3.2.17

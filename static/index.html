@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>T10 Flight Recorder</title>
+  <link rel="stylesheet" href="/style.css?v=20260725-5">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">RESIDEO T10 · LOCAL DIAGNOSTICS</p>
+      <h1>Flight Recorder</h1>
+    </div>
+    <div id="connection" class="pill">Checking connection…</div>
+  </header>
+
+  <main>
+    <section id="connectPanel" class="panel connect hidden">
+      <p>Connect your Resideo account to begin collecting thermostat telemetry.</p>
+      <a class="button primary" href="/auth/login">Connect Resideo</a>
+    </section>
+
+    <section id="homekitPanel" class="panel homekit-panel">
+      <div class="panel-heading">
+        <div><p class="label">Local connection</p><h2>HomeKit</h2></div>
+        <span id="homekitState" class="pill">Checking…</span>
+      </div>
+      <div id="homekitSetup">
+        <p>On the T10, open <b>Menu → Connect HomeKit</b>, then discover it here.</p>
+        <button id="discoverHomekit" class="primary">Discover T10</button>
+        <div id="homekitDevices"></div>
+      </div>
+      <div id="pairForm" class="pair-form hidden">
+        <label for="pairingCode">HomeKit code shown on the thermostat</label>
+        <input id="pairingCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="12">
+        <button id="pairHomekit" class="primary">Pair locally</button>
+        <p class="hint">The code and pairing credentials remain on this server.</p>
+      </div>
+      <p id="homekitError" class="error hidden"></p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="hero-grid">
+        <article class="panel state-card">
+          <p class="label">Equipment request</p>
+          <div class="state-row">
+            <span id="stateDot" class="state-dot"></span>
+            <strong id="operationMode">—</strong>
+          </div>
+          <p id="stateExplanation" class="muted">Waiting for the first sample.</p>
+          <div class="stage-line">
+            <span>Configured cooling stages</span>
+            <b id="coolingStages">—</b>
+          </div>
+        </article>
+        <article class="panel metric">
+          <p class="label">Indoor</p><strong><span id="indoorTemp">—</span>°</strong>
+          <small>Setpoint <span id="coolSetpoint">—</span>°</small>
+        </article>
+        <article class="panel metric">
+          <p class="label">Humidity</p><strong><span id="humidity">—</span>%</strong>
+          <small id="deviceName">T10</small>
+        </article>
+        <article class="panel metric">
+          <p class="label">Last sample</p><strong id="lastAge">—</strong>
+          <small id="pollHealth">Every 5 minutes</small>
+        </article>
+      </div>
+
+      <div class="toolbar">
+        <div>
+          <button class="range active" data-hours="24">24 hours</button>
+          <button class="range" data-hours="168">7 days</button>
+          <button class="range" data-hours="720">30 days</button>
+        </div>
+        <div>
+          <button id="pollNow">Poll now</button>
+          <a class="button" href="/api/export.csv">Export CSV</a>
+        </div>
+      </div>
+
+      <section class="panel chart-panel">
+        <div class="panel-heading chart-heading">
+          <div><p class="label">Thermal response</p><h2>Temperature, humidity & equipment</h2></div>
+          <div class="chart-controls"><button id="zoomOut" title="Show more time">−</button><button id="zoomIn" title="Show less time">+</button><button id="resetZoom">Full range</button><button id="jumpLatest" class="primary">Latest</button></div>
+        </div>
+        <div class="chart-meta">
+          <div class="legend" aria-label="Chart series">
+            <button type="button" class="legend-item temp-key" data-series="temperature" aria-pressed="true">Measured temp</button>
+            <button type="button" class="legend-item set-key" data-series="setpoint" aria-pressed="true">Cool setpoint</button>
+            <button type="button" class="legend-item humidity-key" data-series="humidity" aria-pressed="true">Humidity</button>
+            <button type="button" class="legend-item cool-key" data-series="cooling" aria-pressed="true">Cooling call</button>
+            <button type="button" class="legend-item fan-key" data-series="fan" aria-pressed="true">Blower request (inferred)</button>
+            <button type="button" class="legend-item event-key" data-series="events" aria-pressed="true">Thermostat event</button>
+          </div>
+          <strong id="chartWindow">Last 24 hours · live</strong>
+        </div>
+        <canvas id="chart" height="380" aria-label="Temperature, humidity, and equipment history chart"></canvas>
+        <div id="chartTooltip" class="chart-tooltip hidden"></div>
+        <div id="eventInspector" class="event-inspector hidden" aria-live="polite"></div>
+        <p class="chart-hint">Tap legend items to show or hide series · tap red markers for event details · drag to move through time</p>
+        <p id="chartEmpty" class="empty hidden">History will appear after samples are collected.</p>
+      </section>
+
+      <div class="lower-grid">
+        <section class="panel">
+          <div class="panel-heading">
+            <div><p class="label">Physical evidence</p><h2>Mark an observation</h2></div>
+          </div>
+          <div class="quick-marks">
+            <button data-kind="lights_dimmed">Lights dimmed</button>
+            <button data-kind="start_attempt">Heard start attempt</button>
+            <button data-kind="outdoor_running">Outdoor unit running</button>
+            <button data-kind="outdoor_not_running">Outdoor unit not running</button>
+          </div>
+          <textarea id="note" placeholder="Optional note: buzz, duration, breaker, weather…"></textarea>
+          <p class="hint">Tap as close to the event as possible. Times are recorded in UTC and shown locally.</p>
+        </section>
+        <section class="panel">
+          <div class="panel-heading">
+            <div><p class="label">State changes</p><h2>Recent timeline</h2></div>
+          </div>
+          <div id="timeline" class="timeline"></div>
+        </section>
+      </div>
+
+      <details class="panel raw">
+        <summary>Latest raw API response</summary>
+        <pre id="rawJson">Loading…</pre>
+      </details>
+    </section>
+  </main>
+  <footer>Relay request ≠ verified compressor operation. This dashboard is diagnostic evidence, not an electrical safety device.</footer>
+  <script src="/app.js?v=20260725-6"></script>
+</body>
+</html>
+
