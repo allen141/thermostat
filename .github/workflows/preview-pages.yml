@@ -32,6 +32,7 @@ jobs:
           sed -i 's|href="/style.css|href="./style.css|g' _site/index.html
           sed -i 's|src="/app.js|src="./app.js|g' _site/index.html
           sed -i 's|<script src="./app.js|<script src="./preview.js"></script>\n  <script src="./app.js|' _site/index.html
+          sed -i "s|__APP_VERSION__|$(git rev-parse --short=12 HEAD)|g" _site/index.html
           touch _site/.nojekyll
 
       - name: Upload downloadable preview

@@ -35,7 +35,7 @@ jobs:
         run: ops/deployer/tests/test-deploy.sh
 
       - name: Build image
-        run: docker build --tag thermostat-ci:${{ github.sha }} .
+        run: docker build --build-arg APP_VERSION=${{ github.sha }} --tag thermostat-ci:${{ github.sha }} .
 
       - name: Smoke-test image
         env:
@@ -102,6 +102,8 @@ jobs:
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
