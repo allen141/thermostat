@@ -43,6 +43,16 @@ A thermostat's operating state shows an equipment or relay request; it cannot pr
 
 Do not open energized HVAC equipment. If start attempts repeat, the unit buzzes, wiring smells hot, or a breaker trips, turn the system off and contact a licensed HVAC technician. Use a qualified technician's clamp meter or a suitable energy monitor for higher-resolution electrical evidence.
 
+## Reusable thermostat detail module
+
+The selected unit view is rooted at `[data-component="thermostat-detail"]`. Its browser API remains available as `window.ThermostatDetailModule`, accepting normalized `device`, `snapshot`, `history.samples`, and `source` data. `window.aggregateThermostatRuntime` provides the coverage-aware daily/monthly runtime calculation. T10 and Sensi tabs feed this same module; Compare uses the shared overlay chart.
+
+## Review previews and production deployment
+
+Every push to a non-`main` branch runs `.github/workflows/preview-pages.yml`, producing a fixture-backed static review artifact without credentials, pairing data, or live telemetry. Hosted Pages previews remain opt-in through `ENABLE_PAGES_PREVIEW`.
+
+Updates merged to `main` are validated and published as Linux/AMD64 images by `.github/workflows/container-release.yml`. Production uses the pull-based updater documented in [`ops/deployer/README.md`](ops/deployer/README.md), preserving the bind-mounted `data/` directory and retaining rollback state.
+
 ## Tests
 
 Run:

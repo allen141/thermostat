@@ -1,5 +1,8 @@
 FROM python:3.12-alpine
 
+LABEL org.opencontainers.image.source="https://github.com/allen141/thermostat" \
+      org.opencontainers.image.description="Local thermostat monitoring dashboard"
+
 WORKDIR /app
 
 COPY requirements.txt ./
