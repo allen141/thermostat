@@ -3,15 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>T10 Flight Recorder</title>
-  <link rel="stylesheet" href="/style.css?v=20260725-5">
+  <title>Thermostat overview</title>
+  <link rel="stylesheet" href="/style.css?v=20260725-7">
 </head>
 <body>
-  <header>
-    <div>
-      <p class="eyebrow">RESIDEO T10 · LOCAL DIAGNOSTICS</p>
-      <h1>Flight Recorder</h1>
-    </div>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="Thermostat dashboard home"><span class="brand-mark" aria-hidden="true"></span><span><b>Climate</b><small>Home systems</small></span></a>
     <div id="connection" class="pill">Checking connection…</div>
   </header>
 
@@ -40,8 +37,10 @@
       <p id="homekitError" class="error hidden"></p>
     </section>
 
-    <section id="dashboard" class="hidden">
-      <div class="hero-grid">
+    <section id="dashboard" class="thermostat-module hidden" data-component="thermostat-detail">
+      <section class="summary-section" aria-labelledby="summaryTitle">
+        <div class="section-heading summary-heading"><div><p class="eyebrow">Thermostat overview</p><h1 id="summaryTitle"><span id="summaryDeviceName">Thermostat</span></h1><p id="summaryLocation" class="subhead">Live comfort and equipment status</p></div><div class="header-actions"><span id="dataSource" class="source-badge">Local data</span><button id="pollNowTop">Refresh</button></div></div>
+        <div class="hero-grid">
         <article class="panel state-card">
           <p class="label">Equipment request</p>
           <div class="state-row">
@@ -67,8 +66,15 @@
           <small id="pollHealth">Every 5 minutes</small>
         </article>
       </div>
-
-      <div class="toolbar">
+      </section>
+      <section class="details-section" aria-labelledby="detailsTitle">
+        <div class="section-heading details-heading"><div><p class="eyebrow">Thermostat details</p><h2 id="detailsTitle">Performance &amp; history</h2><p class="subhead">Diagnostics for <span id="detailDeviceName">this thermostat</span></p></div><a class="button" href="/api/export.csv">Export data</a></div>
+        <section class="panel runtime-panel" aria-labelledby="runtimeTitle">
+          <div class="panel-heading runtime-heading"><div><p class="label">Equipment use</p><h2 id="runtimeTitle">Cooling runtime</h2><p class="muted">Estimated from recorded cooling calls; missing telemetry is excluded.</p></div><div class="runtime-controls"><label>Duration<select id="runtimeDuration"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="180">6 months</option><option value="365">12 months</option></select></label><label>Group by<select id="runtimeBucket"><option value="auto" selected>Automatic</option><option value="day">Day</option><option value="month">Month</option></select></label></div></div>
+          <div class="runtime-kpis"><div><span>Total runtime</span><b id="periodRuntime">—</b></div><div><span>Daily average</span><b id="averageRuntime">—</b></div><div><span>Cooling cycles</span><b id="periodCycles">—</b></div><div><span>Coverage</span><b id="runtimeCoverage">—</b></div></div>
+          <div id="runtimeChart" class="runtime-chart" role="img" aria-label="Cooling runtime by period"></div><div class="runtime-axis"><span id="runtimeStart">—</span><span id="runtimeGrouping">Daily runtime</span><span id="runtimeEnd">Today</span></div><p id="runtimeEmpty" class="empty compact hidden">Runtime appears after equipment state samples are collected.</p>
+        </section>
+        <div class="toolbar">
         <div>
           <button class="range active" data-hours="24">24 hours</button>
           <button class="range" data-hours="168">7 days</button>
@@ -129,10 +135,11 @@
         <summary>Latest raw API response</summary>
         <pre id="rawJson">Loading…</pre>
       </details>
+      </section>
     </section>
   </main>
   <footer>Relay request ≠ verified compressor operation. This dashboard is diagnostic evidence, not an electrical safety device.</footer>
-  <script src="/app.js?v=20260725-6"></script>
+  <script src="/app.js?v=20260725-7"></script>
 </body>
 </html>
 

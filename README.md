@@ -44,6 +44,12 @@ No third-party Python packages are required. The server binds to localhost by
 default. OAuth tokens and history are stored in `data/thermostat.sqlite`;
 protect and back up that file.
 
+## Thermostat detail module
+
+The dashboard detail view is rooted at `[data-component="thermostat-detail"]`. Its browser API is exposed as `window.ThermostatDetailModule` and accepts a normalized object with `device`, `snapshot`, `history.samples`, and `source`. Runtime samples require only `captured_at` and `operation_mode`; temperature, humidity, setpoint, location, and device-name fields are optional. This keeps the detail view independent of Resideo or HomeKit and allows a multi-thermostat overview to supply the selected thermostat as data.
+
+Runtime can be viewed over 7, 30, 90, 180, or 365 days and grouped by day or month. Long sample gaps are excluded from totals and reflected in the coverage metric.
+
 ## Diagnostic workflow
 
 - Leave the collector running continuously.
