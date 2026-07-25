@@ -56,6 +56,10 @@ Every push to a non-`main` branch runs `.github/workflows/preview-pages.yml`. Th
 
 Hosted GitHub Pages deployment is additionally available when the repository supports Pages and the Actions variable `ENABLE_PAGES_PREVIEW` is set to `true`. Private repositories require a GitHub plan with private Pages support. The preview never receives Resideo credentials, HomeKit pairing material, the SQLite database, or live thermostat data, and it does not replace or update the Docker-based live deployment.
 
+## Production deployments
+
+Updates to `main` are validated and published as Linux/AMD64 images at `ghcr.io/allen141/thermostat`. Production uses the locally built, pull-based updater documented in [`ops/deployer/README.md`](ops/deployer/README.md). The updater smoke-tests each image, retains one known-good rollback, preserves the bind-mounted `data/` directory, and does not store a GitHub credential on the server.
+
 ## Diagnostic workflow
 
 - Leave the collector running continuously.

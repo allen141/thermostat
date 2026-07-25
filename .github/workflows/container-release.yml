@@ -1,0 +1,115 @@
+name: Validate and publish container
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  validate:
+    name: Validate production image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Validate source
+        run: |
+          node --check static/app.js
+          node --check preview/preview.js
+          python3 -m py_compile server.py homekit_manager.py
+          sh -n ops/deployer/deploy.sh
+          sh -n ops/deployer/tests/mock-docker
+          sh -n ops/deployer/tests/test-deploy.sh
+
+      - name: Test deployment state machine
+        run: ops/deployer/tests/test-deploy.sh
+
+      - name: Build image
+        run: docker build --tag thermostat-ci:${{ github.sha }} .
+
+      - name: Smoke-test image
+        env:
+          CI_IMAGE: thermostat-ci:${{ github.sha }}
+        run: |
+          set -eu
+          cleanup() {
+            docker rm --force thermostat-ci-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run --detach             --name thermostat-ci-smoke             --network bridge             --env HOMEKIT_POLL_SECONDS=0             "$CI_IMAGE"
+          for attempt in $(seq 1 45); do
+            status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' thermostat-ci-smoke)
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            if [ "$status" = "unhealthy" ] || [ "$status" = "exited" ] || [ "$status" = "dead" ]; then
+              docker logs thermostat-ci-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+          docker logs thermostat-ci-smoke
+          echo "Timed out waiting for the image health check" >&2
+          exit 1
+
+  publish:
+    name: Publish main image
+    needs: validate
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=main
+            type=raw,value=sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=sha-${{ github.sha }}
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+
+      - name: Verify anonymous pull
+        run: |
+          set -eu
+          docker logout ghcr.io
+          docker image rm "${IMAGE_NAME}:main" >/dev/null 2>&1 || true
+          docker pull "${IMAGE_NAME}:main"
