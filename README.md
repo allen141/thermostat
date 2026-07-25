@@ -52,7 +52,9 @@ Runtime can be viewed over 7, 30, 90, 180, or 365 days and grouped by day or mon
 
 ## Review previews
 
-Every push to a non-`main` branch runs `.github/workflows/preview-pages.yml`. The workflow publishes the static dashboard to the repository's GitHub Pages site and adds or updates a preview link on the associated pull request. The preview uses generated fixture data from `preview/preview.js`; it never receives Resideo credentials, HomeKit pairing material, the SQLite database, or live thermostat data. GitHub Pages is a separate review environment and does not replace or update the Docker-based live deployment.
+Every push to a non-`main` branch runs `.github/workflows/preview-pages.yml`. The workflow builds a fixture-backed static dashboard, stores it as the **thermostat-review-preview** Actions artifact for 14 days, and adds or updates the download link on the associated pull request. After download, unzip the artifact and open `index.html`.
+
+Hosted GitHub Pages deployment is additionally available when the repository supports Pages and the Actions variable `ENABLE_PAGES_PREVIEW` is set to `true`. Private repositories require a GitHub plan with private Pages support. The preview never receives Resideo credentials, HomeKit pairing material, the SQLite database, or live thermostat data, and it does not replace or update the Docker-based live deployment.
 
 ## Diagnostic workflow
 
