@@ -68,7 +68,7 @@ class HomeKitManager:
  async def _discover(self):
   found=[]; self.discoveries={}
   async for d in self.controller.async_discover(timeout=8):
-   desc=d.description; did=str(getattr(desc,"id","")); self.discoveries[did]=d; found.append({"id":did,"name":str(getattr(desc,"name","HomeKit accessory")),"model":str(getattr(desc,"model","")),"paired":d.paired,"category":str(getattr(desc,"category",""))})
+   desc=d.description; did=str(getattr(desc,"id","")); linked_alias=next((alias for alias,pairing in self.controller.aliases.items() if str(getattr(pairing,"id","")).lower()==did.lower()),None); paired=bool(d.paired); self.discoveries[did]=d; found.append({"id":did,"name":str(getattr(desc,"name","HomeKit accessory")),"model":str(getattr(desc,"model","")),"paired":paired,"linked":bool(linked_alias),"linked_alias":linked_alias,"paired_elsewhere":paired and not linked_alias,"category":str(getattr(desc,"category",""))})
   return found
  def discover(self):return self.run(self._discover(),20)
  async def _pair(self,device_id,code,unit_id):

@@ -43,6 +43,19 @@ class MultiUnitTests(unittest.TestCase):
    except asyncio.CancelledError:pass
    self.assertGreaterEqual(len(attempts),2);self.assertEqual("connected",manager.poll_state["sensi-test"]["connection_state"]);self.assertIsNone(manager.poll_state["sensi-test"]["connection_error"])
   asyncio.run(scenario())
+ def test_discovery_distinguishes_recorder_link_from_other_homekit_pairing(self):
+  class Description:
+   def __init__(self,device_id,name):self.id=device_id;self.name=name;self.model="Thermostat";self.category="thermostat"
+  class Discovery:
+   def __init__(self,device_id,name,paired):self.description=Description(device_id,name);self.paired=paired
+  class Pairing:id="t10-id"
+  class Controller:
+   aliases={"resideo-t10":Pairing()}
+   async def async_discover(self,timeout):
+    for item in (Discovery("t10-id","T10",True),Discovery("sensi-id","Sensi",True),Discovery("new-id","New",False)):yield item
+  manager=HomeKitManager(Path(self.temp.name));manager.controller=Controller();devices={x["id"]:x for x in asyncio.run(manager._discover())}
+  self.assertTrue(devices["t10-id"]["linked"]);self.assertFalse(devices["t10-id"]["paired_elsewhere"]);self.assertTrue(devices["sensi-id"]["paired_elsewhere"]);self.assertFalse(devices["new-id"]["paired"])
+
  def test_homekit_second_sample_uses_named_rows(self):
   manager=HomeKitManager(Path(self.temp.name));manager._ensure_source("resideo-t10","t10","T10","T10")
   service="0000004A";manager.characteristics={("resideo-t10",1,1):{"service_type":service,"type":"00000011","value":20},("resideo-t10",1,2):{"service_type":service,"type":"00000010","value":51},("resideo-t10",1,3):{"service_type":service,"type":"00000035","value":22},("resideo-t10",1,4):{"service_type":service,"type":"0000000F","value":0},("resideo-t10",1,5):{"service_type":service,"type":"00000033","value":2}}
