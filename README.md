@@ -1,80 +1,69 @@
-# T10 Flight Recorder
+# Multi-Thermostat Flight Recorder
 
-A local, read-only diagnostic dashboard for a Resideo/Honeywell Home T10
-thermostat. It polls at the API-supported interval, stores every response in
-SQLite, detects equipment-state transitions, and lets you timestamp physical
-observations such as dimming lights or hearing the compressor try to start.
+A local, read-only diagnostic dashboard for two HVAC systems:
 
-The local HomeKit collector is configured for event-only monitoring by default
-(`HOMEKIT_POLL_SECONDS=0` in `compose.yaml`). It records one startup snapshot
-and then stores only notifications sent by the thermostat. Set the variable to
-a positive number of seconds to restore periodic HomeKit reads.
+- Resideo/Honeywell Home T10, collected through local HomeKit with the Resideo API as a fallback.
+- Copeland Sensi 1F95U-42WF, collected through local HomeKit.
 
-## What it can and cannot prove
-
-`operationStatus.mode` is the thermostat's equipment relay/request status. It
-can show that cooling was requested; it cannot prove that the outdoor
-contactor, compressor, or either physical cooling stage actually energized.
-The API's thermostat-configuration endpoint reports the installed number of
-cooling stages, but the public API may not identify the active stage separately
-on every model/firmware combination. Raw API payloads are retained so any
-additional fields your T10 exposes are preserved.
-
-Visible light dimming and repeated compressor start attempts can indicate a
-high-current electrical or compressor-start problem. Do not open energized HVAC
-equipment. If attempts repeat, the unit buzzes, wiring smells hot, or a breaker
-trips, turn the cooling system off and contact a licensed HVAC technician (and
-an electrician if the voltage supply is suspect).
+Telemetry is retained in SQLite. The dashboard provides independent **T10** and **Sensi** tabs plus a **Compare** tab that overlays both systems on one time axis. It records temperatures, humidity, setpoints, thermostat equipment requests, HomeKit events, and unit-specific or house-wide physical observations.
 
 ## Setup
 
-1. Create an application at the Resideo developer portal.
-2. Set its callback URL to `http://10.0.0.117:8787/auth/callback`.
-3. Copy `.env.example` to `.env` and enter the API key and secret.
-4. Run:
+1. Copy `.env.example` to `.env` and enter Resideo credentials if the T10 cloud fallback is required.
+2. Run `docker compose up -d --build` or `python3 server.py` after installing `requirements.txt`.
+3. Open `http://127.0.0.1:8787`.
+4. For each local thermostat, put the accessory into HomeKit pairing mode, select **Add / link thermostat**, choose the dashboard unit, and enter its eight-digit code.
 
-```bash
-python3 server.py
-```
+For the Sensi 1F95U-42WF, the HomeKit code is available from the thermostat's Wi-Fi/HomeKit setup screen. If discovery says the accessory is already paired, the recorder deliberately does not reset or unpair it; enable pairing from its existing controller or remove it there first.
 
-5. Open `http://127.0.0.1:8787`, select **Connect Resideo**, and authorize the
-   thermostat account.
+The server uses host networking because HomeKit discovery relies on local multicast DNS. Pairing credentials remain in `data/homekit-pairings.json`, and telemetry remains in `data/thermostat.sqlite`; protect and back up both files.
+Pairing credentials and unit mappings survive service restarts and image replacements because the production container bind-mounts the same `data/` directory. On startup, each accessory reconnects independently. A non-recording health check runs every `HOMEKIT_RECONNECT_SECONDS` in event-only mode; failures are shown as **Reconnecting** and retried with bounded exponential backoff without requiring another service restart. Restore `homekit-pairings.json` and `thermostat.sqlite` together when recovering from backup.
 
-No third-party Python packages are required. The server binds to localhost by
-default. OAuth tokens and history are stored in `data/thermostat.sqlite`;
-protect and back up that file.
 
-## Thermostat detail module
+## Data migration
 
-The dashboard detail view is rooted at `[data-component="thermostat-detail"]`. Its browser API is exposed as `window.ThermostatDetailModule` and accepts a normalized object with `device`, `snapshot`, `history.samples`, and `source`. Runtime samples require only `captured_at` and `operation_mode`; temperature, humidity, setpoint, location, and device-name fields are optional. This keeps the detail view independent of Resideo or HomeKit and allows a multi-thermostat overview to supply the selected thermostat as data.
+Startup creates stable `t10` and `sensi` unit identities and unit-aware telemetry tables. Existing Resideo samples, local T10 HomeKit samples, transitions, and observations are copied into the normalized model using idempotent source identifiers. Original tables are retained. Existing observations are assigned to the T10; new observations can be assigned to either unit or marked House-wide.
 
-Runtime can be viewed over 7, 30, 90, 180, or 365 days and grouped by day or month. Long sample gaps are excluded from totals and reflected in the coverage metric.
+Back up `data/thermostat.sqlite` and `data/homekit-pairings.json` before deploying a new build.
 
-## Review previews
+## Dashboard and API
 
-Every push to a non-`main` branch runs `.github/workflows/preview-pages.yml`. The workflow builds a fixture-backed static dashboard, stores it as the **thermostat-review-preview** Actions artifact for 14 days, and adds or updates the download link on the associated pull request. After download, unzip the artifact and open `index.html`.
+- Unit tabs show the latest state, active data source, graph, event timeline, raw sample, per-unit polling, observations, and CSV export.
+- Compare shows measured temperature and setpoint for both units by default. Humidity, equipment calls, and events can be enabled from the legend.
+- Chart range, zoom, visibility settings, and selected tab persist while navigating and across browser refreshes.
+- `GET /api/units` lists units, sources, current readings, and health.
+- `GET /api/units/{unit_id}/history?hours=24` returns one unit's history.
+- `GET /api/compare?hours=24` returns both labelled histories.
+- `POST /api/units/{unit_id}/poll` requests an immediate read.
+- `GET /api/export.csv?unit_id=t10|sensi|all` exports attributed telemetry.
 
-Hosted GitHub Pages deployment is additionally available when the repository supports Pages and the Actions variable `ENABLE_PAGES_PREVIEW` is set to `true`. Private repositories require a GitHub plan with private Pages support. The preview never receives Resideo credentials, HomeKit pairing material, the SQLite database, or live thermostat data, and it does not replace or update the Docker-based live deployment.
+Legacy T10 endpoints remain available as compatibility wrappers.
 
-## Production deployments
+## Diagnostic limits
 
-Updates to `main` are validated and published as Linux/AMD64 images at `ghcr.io/allen141/thermostat`. Production uses the locally built, pull-based updater documented in [`ops/deployer/README.md`](ops/deployer/README.md). The updater smoke-tests each image, retains one known-good rollback, preserves the bind-mounted `data/` directory, and does not store a GitHub credential on the server.
+A thermostat's operating state shows an equipment or relay request; it cannot prove that the outdoor contactor, compressor, blower, or a specific physical stage energized. A cooling request followed by no temperature decrease is useful evidence, not a diagnosis.
+
+Do not open energized HVAC equipment. If start attempts repeat, the unit buzzes, wiring smells hot, or a breaker trips, turn the system off and contact a licensed HVAC technician. Use a qualified technician's clamp meter or a suitable energy monitor for higher-resolution electrical evidence.
+
+## Reusable thermostat detail module
+
+The selected unit view is rooted at `[data-component="thermostat-detail"]`. Its browser API remains available as `window.ThermostatDetailModule`, accepting normalized `device`, `snapshot`, `history.samples`, and `source` data. `window.aggregateThermostatRuntime` provides the coverage-aware daily/monthly runtime calculation. T10 and Sensi tabs feed this same module; Compare uses the shared overlay chart.
+
+## Review previews and production deployment
+
+Every push to a non-`main` branch runs `.github/workflows/preview-pages.yml`, producing a fixture-backed static review artifact without credentials, pairing data, or live telemetry. Hosted Pages previews remain opt-in through `ENABLE_PAGES_PREVIEW`.
+
+Updates merged to `main` are validated and published as Linux/AMD64 images by `.github/workflows/container-release.yml`. Production uses the pull-based updater documented in [`ops/deployer/README.md`](ops/deployer/README.md), preserving the bind-mounted `data/` directory and retaining rollback state.
 
 ## Developer guide
 
 Development conventions, required validation, release behavior, live-server architecture, and updater-management safety rules are documented in [`AGENTS.md`](AGENTS.md).
 
-## Diagnostic workflow
+## Tests
 
-- Leave the collector running continuously.
-- Press **Mark observation** immediately when lights dim, you hear a start
-  attempt, or you verify the outdoor unit is or is not running.
-- Export CSV from the dashboard before a service visit.
-- Compare `Cooling` transitions with temperature slope and observation markers.
-  A cooling request followed by no temperature decrease is a useful clue, but
-  is not by itself a diagnosis.
+Run:
 
-For higher-resolution electrical evidence, use a qualified technician's clamp
-meter/data logger or a suitable energy monitor. Never connect improvised
-instrumentation to compressor or mains wiring.
-
+```bash
+python3 -m unittest discover -s tests -v
+node --check static/app.js
+```

@@ -6,9 +6,12 @@ production deployment and persistent thermostat data.
 
 ## Repository purpose
 
-This project is a read-only thermostat flight recorder and dashboard. It:
+This project is a read-only flight recorder and dashboard for the Resideo T10
+and Copeland Sensi HVAC systems. It:
 
 - serves a Python HTTP application from `server.py`;
+- maintains stable `t10` and `sensi` unit identities with unit-aware telemetry,
+  transitions, observations, exports, and comparison APIs;
 - integrates HomeKit through `homekit_manager.py`;
 - stores OAuth state, observations, and history in `data/thermostat.sqlite`,
   with HomeKit pairing state alongside it in `data/homekit-pairings.json`;
@@ -22,8 +25,9 @@ into electrical or HVAC safety claims.
 
 ## Repository map
 
-- `server.py`: HTTP server, Resideo OAuth/API integration, SQLite schema,
-  polling, history, observations, exports, and API routes.
+- `server.py`: HTTP server, Resideo OAuth/API integration, legacy and
+  normalized SQLite schemas, idempotent data migration, per-unit polling,
+  history, observations, exports, comparison, and API routes.
 - `homekit_manager.py`: HomeKit discovery, pairing, subscriptions, polling, and
   persistence.
 - `static/`: production HTML, CSS, and browser JavaScript.
@@ -66,8 +70,10 @@ For UI work:
 
 For backend or data work:
 
-- preserve compatibility with existing SQLite files;
-- use additive migrations and tolerate older rows or missing optional fields;
+- preserve compatibility with existing SQLite files and legacy T10 endpoints;
+- keep the stable `t10` and `sensi` identities and source attribution intact;
+- use additive, idempotent migrations and tolerate older rows or missing
+  optional fields;
 - preserve raw upstream payloads when practical;
 - keep HomeKit and Resideo-specific behavior out of generic UI contracts; and
 - do not reduce the minimum Resideo polling interval below 300 seconds.
@@ -83,6 +89,7 @@ Local development can load `.env` through `server.py`. Relevant settings are:
 - `PORT`
 - `POLL_SECONDS`
 - `HOMEKIT_POLL_SECONDS`
+- `HOMEKIT_RECONNECT_SECONDS`
 
 Never commit `.env`, OAuth tokens, `data/thermostat.sqlite`, SQLite WAL/SHM
 files, `homekit-pairings.json`, API responses containing account data, or logs
@@ -122,6 +129,7 @@ exists.
 Run checks proportional to the change. The baseline validation used by CI is:
 
 ```bash
+python3 -m unittest discover -s tests -v
 node --check static/app.js
 node --check preview/preview.js
 python3 -m py_compile server.py homekit_manager.py
@@ -215,8 +223,8 @@ The production application runs:
 - pinned to the pulled application image ID;
 - with host networking;
 - with `/mnt/user/PrivateStorage/projects/thermostat/data:/app/data`;
-- with `HOST=0.0.0.0`, `PORT=8787`, `POLL_SECONDS=300`, and
-  `HOMEKIT_POLL_SECONDS=0`;
+- with `HOST=0.0.0.0`, `PORT=8787`, `POLL_SECONDS=300`,
+  `HOMEKIT_POLL_SECONDS=0`, and `HOMEKIT_RECONNECT_SECONDS=60`;
 - with restart policy `unless-stopped`;
 - with `no-new-privileges` and all Linux capabilities dropped; and
 - with one 50 MB JSON log file.
@@ -231,7 +239,9 @@ a different image.
 Exactly one known-good rollback container is retained. Successful swaps usually
 cause a short dashboard interruption. Persistent database, OAuth, and HomeKit
 pairing state survive because they remain in the host data directory rather
-than the container filesystem.
+than the container filesystem. Back up and restore `thermostat.sqlite` and
+`homekit-pairings.json` together so unit mappings and pairing credentials remain
+consistent.
 
 ## Production safety rules
 

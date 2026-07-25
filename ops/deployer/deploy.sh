@@ -121,6 +121,7 @@ start_production() {
     --env PORT=8787 \
     --env POLL_SECONDS=300 \
     --env HOMEKIT_POLL_SECONDS=0 \
+    --env HOMEKIT_RECONNECT_SECONDS=60 \
     --volume "$DATA_DIR:/app/data" \
     "$image_id" >/dev/null
 }
@@ -168,6 +169,7 @@ deploy_once() {
     --network bridge \
     --restart no \
     --env HOMEKIT_POLL_SECONDS=0 \
+    --env HOMEKIT_RECONNECT_SECONDS=60 \
     "$new_image_id" >/dev/null; then
     log "Could not start smoke container"
     mark_failed "$new_image_id"
