@@ -90,6 +90,7 @@ Local development can load `.env` through `server.py`. Relevant settings are:
 - `POLL_SECONDS`
 - `HOMEKIT_POLL_SECONDS`
 - `HOMEKIT_RECONNECT_SECONDS`
+- `APP_VERSION` (normally injected by the image build; local default is `dev`)
 
 Never commit `.env`, OAuth tokens, `data/thermostat.sqlite`, SQLite WAL/SHM
 files, `homekit-pairings.json`, API responses containing account data, or logs
@@ -162,7 +163,8 @@ explicitly authorized a production rollout.
 Every push to a non-`main` branch runs
 `.github/workflows/preview-pages.yml`. It builds the fixture-backed static site,
 uploads a 14-day `thermostat-review-preview` artifact, and adds its link to the
-associated pull request. If the repository variable
+associated pull request. The preview build substitutes its commit hash into
+the lower-corner build badge. If the repository variable
 `ENABLE_PAGES_PREVIEW=true`, the same fixture site is deployed to GitHub Pages.
 
 The preview is a separate review environment. It must never:
@@ -188,7 +190,8 @@ Successful `main` runs publish Linux/AMD64 images to:
 The workflow uses `GITHUB_TOKEN` only inside GitHub Actions. The public GHCR
 package is pulled anonymously by production. Images disable provenance and SBOM
 attachments for compatibility with the server's Docker 20.10 daemon and carry
-OCI source/revision labels.
+OCI source/revision labels. The same commit SHA is baked into `APP_VERSION`
+and rendered in the page's lower-corner build badge.
 
 Every update to `main`, including a direct push, is a production release.
 Treat merging or pushing to `main` as authorization-sensitive: do it only when
