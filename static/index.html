@@ -1,145 +1,16 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Thermostat overview</title>
-  <link rel="stylesheet" href="/style.css?v=20260725-7">
-</head>
-<body>
-  <header class="app-header">
-    <a class="brand" href="/" aria-label="Thermostat dashboard home"><span class="brand-mark" aria-hidden="true"></span><span><b>Climate</b><small>Home systems</small></span></a>
-    <div id="connection" class="pill">Checking connection…</div>
-  </header>
-
-  <main>
-    <section id="connectPanel" class="panel connect hidden">
-      <p>Connect your Resideo account to begin collecting thermostat telemetry.</p>
-      <a class="button primary" href="/auth/login">Connect Resideo</a>
-    </section>
-
-    <section id="homekitPanel" class="panel homekit-panel">
-      <div class="panel-heading">
-        <div><p class="label">Local connection</p><h2>HomeKit</h2></div>
-        <span id="homekitState" class="pill">Checking…</span>
-      </div>
-      <div id="homekitSetup">
-        <p>On the T10, open <b>Menu → Connect HomeKit</b>, then discover it here.</p>
-        <button id="discoverHomekit" class="primary">Discover T10</button>
-        <div id="homekitDevices"></div>
-      </div>
-      <div id="pairForm" class="pair-form hidden">
-        <label for="pairingCode">HomeKit code shown on the thermostat</label>
-        <input id="pairingCode" inputmode="numeric" autocomplete="off" placeholder="8-digit code" maxlength="12">
-        <button id="pairHomekit" class="primary">Pair locally</button>
-        <p class="hint">The code and pairing credentials remain on this server.</p>
-      </div>
-      <p id="homekitError" class="error hidden"></p>
-    </section>
-
-    <section id="dashboard" class="thermostat-module hidden" data-component="thermostat-detail">
-      <section class="summary-section" aria-labelledby="summaryTitle">
-        <div class="section-heading summary-heading"><div><p class="eyebrow">Thermostat overview</p><h1 id="summaryTitle"><span id="summaryDeviceName">Thermostat</span></h1><p id="summaryLocation" class="subhead">Live comfort and equipment status</p></div><div class="header-actions"><span id="dataSource" class="source-badge">Local data</span><button id="pollNowTop">Refresh</button></div></div>
-        <div class="hero-grid">
-        <article class="panel state-card">
-          <p class="label">Equipment request</p>
-          <div class="state-row">
-            <span id="stateDot" class="state-dot"></span>
-            <strong id="operationMode">—</strong>
-          </div>
-          <p id="stateExplanation" class="muted">Waiting for the first sample.</p>
-          <div class="stage-line">
-            <span>Configured cooling stages</span>
-            <b id="coolingStages">—</b>
-          </div>
-        </article>
-        <article class="panel metric">
-          <p class="label">Indoor</p><strong><span id="indoorTemp">—</span>°</strong>
-          <small>Setpoint <span id="coolSetpoint">—</span>°</small>
-        </article>
-        <article class="panel metric">
-          <p class="label">Humidity</p><strong><span id="humidity">—</span>%</strong>
-          <small id="deviceName">T10</small>
-        </article>
-        <article class="panel metric">
-          <p class="label">Last sample</p><strong id="lastAge">—</strong>
-          <small id="pollHealth">Every 5 minutes</small>
-        </article>
-      </div>
-      </section>
-      <section class="details-section" aria-labelledby="detailsTitle">
-        <div class="section-heading details-heading"><div><p class="eyebrow">Thermostat details</p><h2 id="detailsTitle">Performance &amp; history</h2><p class="subhead">Diagnostics for <span id="detailDeviceName">this thermostat</span></p></div><a class="button" href="/api/export.csv">Export data</a></div>
-        <section class="panel runtime-panel" aria-labelledby="runtimeTitle">
-          <div class="panel-heading runtime-heading"><div><p class="label">Equipment use</p><h2 id="runtimeTitle">Cooling runtime</h2><p class="muted">Estimated from recorded cooling calls; missing telemetry is excluded.</p></div><div class="runtime-controls"><label>Duration<select id="runtimeDuration"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="180">6 months</option><option value="365">12 months</option></select></label><label>Group by<select id="runtimeBucket"><option value="auto" selected>Automatic</option><option value="day">Day</option><option value="month">Month</option></select></label></div></div>
-          <div class="runtime-kpis"><div><span>Total runtime</span><b id="periodRuntime">—</b></div><div><span>Daily average</span><b id="averageRuntime">—</b></div><div><span>Cooling cycles</span><b id="periodCycles">—</b></div><div><span>Coverage</span><b id="runtimeCoverage">—</b></div></div>
-          <div id="runtimeChart" class="runtime-chart" role="img" aria-label="Cooling runtime by period"></div><div class="runtime-axis"><span id="runtimeStart">—</span><span id="runtimeGrouping">Daily runtime</span><span id="runtimeEnd">Today</span></div><p id="runtimeEmpty" class="empty compact hidden">Runtime appears after equipment state samples are collected.</p>
-        </section>
-        <div class="toolbar">
-        <div>
-          <button class="range active" data-hours="24">24 hours</button>
-          <button class="range" data-hours="168">7 days</button>
-          <button class="range" data-hours="720">30 days</button>
-        </div>
-        <div>
-          <button id="pollNow">Poll now</button>
-          <a class="button" href="/api/export.csv">Export CSV</a>
-        </div>
-      </div>
-
-      <section class="panel chart-panel">
-        <div class="panel-heading chart-heading">
-          <div><p class="label">Thermal response</p><h2>Temperature, humidity & equipment</h2></div>
-          <div class="chart-controls"><button id="zoomOut" title="Show more time">−</button><button id="zoomIn" title="Show less time">+</button><button id="resetZoom">Full range</button><button id="jumpLatest" class="primary">Latest</button></div>
-        </div>
-        <div class="chart-meta">
-          <div class="legend" aria-label="Chart series">
-            <button type="button" class="legend-item temp-key" data-series="temperature" aria-pressed="true">Measured temp</button>
-            <button type="button" class="legend-item set-key" data-series="setpoint" aria-pressed="true">Cool setpoint</button>
-            <button type="button" class="legend-item humidity-key" data-series="humidity" aria-pressed="true">Humidity</button>
-            <button type="button" class="legend-item cool-key" data-series="cooling" aria-pressed="true">Cooling call</button>
-            <button type="button" class="legend-item fan-key" data-series="fan" aria-pressed="true">Blower request (inferred)</button>
-            <button type="button" class="legend-item event-key" data-series="events" aria-pressed="true">Thermostat event</button>
-          </div>
-          <strong id="chartWindow">Last 24 hours · live</strong>
-        </div>
-        <canvas id="chart" height="380" aria-label="Temperature, humidity, and equipment history chart"></canvas>
-        <div id="chartTooltip" class="chart-tooltip hidden"></div>
-        <div id="eventInspector" class="event-inspector hidden" aria-live="polite"></div>
-        <p class="chart-hint">Tap legend items to show or hide series · tap red markers for event details · drag to move through time</p>
-        <p id="chartEmpty" class="empty hidden">History will appear after samples are collected.</p>
-      </section>
-
-      <div class="lower-grid">
-        <section class="panel">
-          <div class="panel-heading">
-            <div><p class="label">Physical evidence</p><h2>Mark an observation</h2></div>
-          </div>
-          <div class="quick-marks">
-            <button data-kind="lights_dimmed">Lights dimmed</button>
-            <button data-kind="start_attempt">Heard start attempt</button>
-            <button data-kind="outdoor_running">Outdoor unit running</button>
-            <button data-kind="outdoor_not_running">Outdoor unit not running</button>
-          </div>
-          <textarea id="note" placeholder="Optional note: buzz, duration, breaker, weather…"></textarea>
-          <p class="hint">Tap as close to the event as possible. Times are recorded in UTC and shown locally.</p>
-        </section>
-        <section class="panel">
-          <div class="panel-heading">
-            <div><p class="label">State changes</p><h2>Recent timeline</h2></div>
-          </div>
-          <div id="timeline" class="timeline"></div>
-        </section>
-      </div>
-
-      <details class="panel raw">
-        <summary>Latest raw API response</summary>
-        <pre id="rawJson">Loading…</pre>
-      </details>
-      </section>
-    </section>
-  </main>
-  <footer>Relay request ≠ verified compressor operation. This dashboard is diagnostic evidence, not an electrical safety device.</footer>
-  <script src="/app.js?v=20260725-7"></script>
-</body>
-</html>
-
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Thermostat Flight Recorder</title><link rel="stylesheet" href="/style.css?v=20260725-9"></head>
+<body><header><div><p class="eyebrow">MULTI-UNIT · LOCAL DIAGNOSTICS</p><h1>Flight Recorder</h1></div><div id="connection" class="pill">Checking systems…</div></header>
+<main>
+<section class="unit-tabs" role="tablist" aria-label="Thermostat views"><button class="unit-tab active" data-tab="t10" role="tab">T10 <small>Resideo</small></button><button class="unit-tab" data-tab="sensi" role="tab">Sensi <small>1F95U-42WF</small></button><button class="unit-tab" data-tab="compare" role="tab">Compare <small>Both systems</small></button></section>
+<section id="setupPanel" class="panel setup-panel"><div class="panel-heading"><div><p class="label">Local connections</p><h2>HomeKit accessories</h2></div><span id="homekitState" class="pill">Checking…</span></div><div id="pairedAccessories"></div><div id="homekitSetup"><p>Put a thermostat into HomeKit pairing mode, then discover it here. Pairing credentials remain on this server.</p><button id="discoverHomekit" class="primary">Add / link thermostat</button><div id="homekitDevices"></div></div><div id="pairForm" class="pair-form hidden"><label for="pairingUnit">Dashboard unit</label><select id="pairingUnit"><option value="sensi">Sensi</option><option value="t10">T10</option></select><label for="pairingCode">Eight-digit HomeKit code</label><input id="pairingCode" inputmode="numeric" autocomplete="off" placeholder="123-45-678" maxlength="12"><button id="pairHomekit" class="primary">Pair locally</button></div><p id="homekitError" class="error hidden"></p></section>
+<section id="resideoConnect" class="panel connect hidden"><p>Connect Resideo as the T10 fallback data source.</p><a class="button primary" href="/auth/login">Connect Resideo</a></section>
+<section id="dashboard" class="thermostat-module" data-component="thermostat-detail"><div id="detailHeader" class="section-heading summary-heading"><div><p class="eyebrow">Thermostat overview</p><h1 id="summaryDeviceName">Thermostat</h1><p id="summaryLocation" class="subhead">Live comfort and equipment status</p></div><div class="header-actions"><span id="dataSource" class="source-badge">Local data</span><button id="pollNowTop">Refresh</button></div></div>
+<div id="unitSummary" class="hero-grid"><article class="panel state-card"><p class="label">Equipment request</p><div class="state-row"><span id="stateDot" class="state-dot"></span><strong id="operationMode">—</strong></div><p id="stateExplanation" class="muted">Waiting for a sample.</p><div class="stage-line"><span>Active source</span><b id="activeSource">—</b></div></article><article class="panel metric"><p class="label">Indoor</p><strong><span id="indoorTemp">—</span>°</strong><small>Setpoint <span id="coolSetpoint">—</span>°</small></article><article class="panel metric"><p class="label">Humidity</p><strong><span id="humidity">—</span>%</strong><small id="deviceName">—</small></article><article class="panel metric"><p class="label">Last sample</p><strong id="lastAge">—</strong><small id="pollHealth">—</small></article></div>
+<div id="compareSummary" class="compare-summary hidden"><article class="panel mini-unit"><span class="unit-swatch t10"></span><div><p class="label">T10 latest</p><strong id="t10CompareTemp">—</strong><small id="t10CompareState">Not connected</small></div></article><article class="panel mini-unit"><span class="unit-swatch sensi"></span><div><p class="label">Sensi latest</p><strong id="sensiCompareTemp">—</strong><small id="sensiCompareState">Not connected</small></div></article></div>
+<section id="runtimePanel" class="panel runtime-panel" aria-labelledby="runtimeTitle"><div class="panel-heading runtime-heading"><div><p class="label">Equipment use</p><h2 id="runtimeTitle">Cooling runtime</h2><p class="muted">Diagnostics for <span id="detailDeviceName">this thermostat</span>; missing telemetry is excluded.</p></div><div class="runtime-controls"><label>Duration<select id="runtimeDuration"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="180">6 months</option><option value="365">12 months</option></select></label><label>Group by<select id="runtimeBucket"><option value="auto" selected>Automatic</option><option value="day">Day</option><option value="month">Month</option></select></label></div></div><div class="runtime-kpis"><div><span>Total runtime</span><b id="periodRuntime">—</b></div><div><span>Daily average</span><b id="averageRuntime">—</b></div><div><span>Cooling cycles</span><b id="periodCycles">—</b></div><div><span>Coverage</span><b id="runtimeCoverage">—</b></div></div><div id="runtimeChart" class="runtime-chart" role="img" aria-label="Cooling runtime by period"></div><div class="runtime-axis"><span id="runtimeStart">—</span><span id="runtimeGrouping">Daily runtime</span><span id="runtimeEnd">Today</span></div><p id="runtimeEmpty" class="empty compact hidden">Runtime appears after equipment state samples are collected.</p></section>
+<div class="toolbar"><div><button class="range active" data-hours="24">24 hours</button><button class="range" data-hours="168">7 days</button><button class="range" data-hours="720">30 days</button></div><div><button id="pollNow">Poll now</button><a id="exportCsv" class="button" href="/api/export.csv?unit_id=t10">Export CSV</a></div></div>
+<section class="panel chart-panel"><div class="panel-heading chart-heading"><div><p class="label" id="chartEyebrow">Thermal response</p><h2 id="chartTitle">Temperature, humidity & equipment</h2></div><div class="chart-controls"><button id="zoomOut">−</button><button id="zoomIn">+</button><button id="resetZoom">Full range</button><button id="jumpLatest" class="primary">Latest</button></div></div><div class="chart-meta"><div id="legend" class="legend"></div><strong id="chartWindow">Last 24 hours · live</strong></div><canvas id="chart" height="400" aria-label="Thermostat history chart"></canvas><div id="chartTooltip" class="chart-tooltip hidden"></div><p class="chart-hint">Tap legend items to show or hide series · drag to move through time</p><p id="chartEmpty" class="empty hidden">History will appear after samples are collected.</p></section>
+<div id="unitDetails" class="lower-grid"><section class="panel"><div class="panel-heading"><div><p class="label">Physical evidence</p><h2>Mark an observation</h2></div><select id="observationScope"><option value="active">This unit</option><option value="house">House-wide</option></select></div><div class="quick-marks"><button data-kind="lights_dimmed">Lights dimmed</button><button data-kind="start_attempt">Heard start attempt</button><button data-kind="outdoor_running">Outdoor unit running</button><button data-kind="outdoor_not_running">Outdoor unit not running</button></div><textarea id="note" placeholder="Optional note: buzz, duration, breaker, weather…"></textarea></section><section class="panel"><div class="panel-heading"><div><p class="label">State changes</p><h2>Recent timeline</h2></div></div><div id="timeline" class="timeline"></div></section></div>
+<details id="rawPanel" class="panel raw"><summary>Latest raw response</summary><pre id="rawJson">Loading…</pre></details>
+</section></main><footer>Relay request ≠ verified compressor operation. This dashboard is diagnostic evidence, not an electrical safety device.</footer><script src="/app.js?v=20260725-9"></script></body></html>
