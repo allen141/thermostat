@@ -43,6 +43,18 @@ class MultiUnitTests(unittest.TestCase):
    except asyncio.CancelledError:pass
    self.assertGreaterEqual(len(attempts),2);self.assertEqual("connected",manager.poll_state["sensi-test"]["connection_state"]);self.assertIsNone(manager.poll_state["sensi-test"]["connection_error"])
   asyncio.run(scenario())
+ def test_homekit_second_sample_uses_named_rows(self):
+  manager=HomeKitManager(Path(self.temp.name));manager._ensure_source("resideo-t10","t10","T10","T10")
+  service="0000004A";manager.characteristics={("resideo-t10",1,1):{"service_type":service,"type":"00000011","value":20},("resideo-t10",1,2):{"service_type":service,"type":"00000010","value":51},("resideo-t10",1,3):{"service_type":service,"type":"00000035","value":22},("resideo-t10",1,4):{"service_type":service,"type":"0000000F","value":0},("resideo-t10",1,5):{"service_type":service,"type":"00000033","value":2}}
+  manager._store_sample("resideo-t10","snapshot");manager.characteristics[("resideo-t10",1,4)]["value"]=2;manager._store_sample("resideo-t10","event")
+  with server.db() as conn:
+   self.assertEqual(2,conn.execute("SELECT COUNT(*) FROM telemetry_samples WHERE source_id='t10-homekit'").fetchone()[0]);self.assertGreaterEqual(conn.execute("SELECT COUNT(*) FROM unit_transitions WHERE unit_id='t10'").fetchone()[0],1)
+
+ def test_chart_keeps_humidity_scaling_and_separate_equipment_lanes(self):
+  source=(Path(__file__).parents[1]/"static"/"app.js").read_text()
+  self.assertIn("function humidityDomain",source);self.assertNotIn("hy=v=>p.b-v/100",source);self.assertIn("humidity.hi-(humidity.hi-humidity.lo)",source)
+  self.assertIn("`${unitName} cool`",source);self.assertIn("`${unitName} fan`",source);self.assertIn("Number(r.fan_request)===1",source)
+
  def test_unknown_unit_is_rejected(self):
   with self.assertRaises(KeyError):server.history_for("garage",24)
 

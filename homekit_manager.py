@@ -135,6 +135,7 @@ class HomeKitManager:
   if v["current_temp_c"] is None:return
   source=self._ensure_source(alias); cv=lambda x:None if x is None else x*9/5+32; target=v["cooling_threshold_c"] if v["target_hvac"]==3 else v["target_temp_c"]; hvac=v["current_hvac"]; op=["EquipmentOff","Heating","Cooling"][hvac] if hvac in (0,1,2) else "Unknown"; captured=utcnow()
   with sqlite3.connect(self.db_path,timeout=30) as conn:
+   conn.row_factory=sqlite3.Row
    cur=conn.execute("INSERT INTO telemetry_samples(captured_at,unit_id,source_id,indoor_temp,indoor_humidity,cool_setpoint,heat_setpoint,system_mode,operation_mode,fan_request,is_alive,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(captured,source["unit_id"],source["id"],cv(v["current_temp_c"]),v["humidity"],cv(target),cv(v["heating_threshold_c"] or v["target_temp_c"]),["Off","Heat","Cool","Auto"][v["target_hvac"]] if v["target_hvac"] in (0,1,2,3) else "Unknown",op,hvac in (1,2),1,json.dumps({"alias":alias,"event_source":event_source,**v},separators=(",",":"))))
    current=conn.execute("SELECT * FROM telemetry_samples WHERE id=?",(cur.lastrowid,)).fetchone();previous=conn.execute("SELECT * FROM telemetry_samples WHERE unit_id=? AND source_id=? AND id<>? ORDER BY id DESC LIMIT 1",(source["unit_id"],source["id"],cur.lastrowid)).fetchone()
    if previous:
