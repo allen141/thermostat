@@ -13,7 +13,7 @@ def load_env():
   line=raw.strip()
   if line and not line.startswith("#") and "=" in line:
    key,value=line.split("=",1);os.environ.setdefault(key.strip(),value.strip().strip("'\""))
-load_env();CLIENT_ID=os.getenv("RESIDEO_CLIENT_ID","");CLIENT_SECRET=os.getenv("RESIDEO_CLIENT_SECRET","");REDIRECT_URI=os.getenv("RESIDEO_REDIRECT_URI","http://127.0.0.1:8787/auth/callback");POLL_SECONDS=max(300,int(os.getenv("POLL_SECONDS","300")));HOST=os.getenv("HOST","0.0.0.0");PORT=int(os.getenv("PORT","8787"));DATA.mkdir(exist_ok=True)
+load_env();CLIENT_ID=os.getenv("RESIDEO_CLIENT_ID","");CLIENT_SECRET=os.getenv("RESIDEO_CLIENT_SECRET","");REDIRECT_URI=os.getenv("RESIDEO_REDIRECT_URI","http://127.0.0.1:8787/auth/callback");POLL_SECONDS=max(300,int(os.getenv("POLL_SECONDS","300")));HOST=os.getenv("HOST","0.0.0.0");PORT=int(os.getenv("PORT","8787"));APP_VERSION="".join(c for c in os.getenv("APP_VERSION","dev") if c.isalnum() or c in "._-")[:12] or "dev";DATA.mkdir(exist_ok=True)
 def now():return datetime.now(timezone.utc).isoformat(timespec="seconds")
 def db():
  conn=sqlite3.connect(DB_PATH,timeout=30);conn.row_factory=sqlite3.Row;conn.execute("PRAGMA journal_mode=WAL");return conn
@@ -200,7 +200,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
  def static(self,path):
   relative="index.html" if path=="/" else path.lstrip("/");target=(STATIC/relative).resolve()
   if STATIC.resolve() not in target.parents or not target.is_file():return self.send_json({"error":"Not found"},404)
-  mime={".html":"text/html",".css":"text/css",".js":"text/javascript",".svg":"image/svg+xml"}.get(target.suffix,"application/octet-stream");body=target.read_bytes();self.send_response(200);self.send_header("Content-Type",mime+"; charset=utf-8");self.send_header("Content-Length",str(len(body)));self.end_headers();self.wfile.write(body)
+  mime={".html":"text/html",".css":"text/css",".js":"text/javascript",".svg":"image/svg+xml"}.get(target.suffix,"application/octet-stream");body=target.read_bytes()
+  if target.name=="index.html":body=body.replace(b"__APP_VERSION__",APP_VERSION.encode())
+  self.send_response(200);self.send_header("Content-Type",mime+"; charset=utf-8");self.send_header("Content-Length",str(len(body)));self.end_headers();self.wfile.write(body)
 if __name__=="__main__":
  init_db()
  try:

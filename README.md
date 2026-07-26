@@ -55,6 +55,10 @@ Every push to a non-`main` branch runs `.github/workflows/preview-pages.yml`, pr
 
 Updates merged to `main` are validated and published as Linux/AMD64 images by `.github/workflows/container-release.yml`. Production uses the pull-based updater documented in [`ops/deployer/README.md`](ops/deployer/README.md), preserving the bind-mounted `data/` directory and retaining rollback state.
 
+## Developer guide
+
+Development conventions, required validation, release behavior, live-server architecture, and updater-management safety rules are documented in [`AGENTS.md`](AGENTS.md).
+
 ## Tests
 
 Run:
