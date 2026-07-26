@@ -64,6 +64,26 @@ class MultiUnitTests(unittest.TestCase):
   manager=HomeKitManager(Path(self.temp.name));manager.controller=Controller();devices={x["id"]:x for x in asyncio.run(manager._discover())}
   self.assertTrue(devices["t10-id"]["linked"]);self.assertFalse(devices["t10-id"]["paired_elsewhere"]);self.assertTrue(devices["sensi-id"]["paired_elsewhere"]);self.assertFalse(devices["new-id"]["paired"])
 
+ def test_discovery_prefers_unpaired_identity_after_accessory_reset(self):
+  class Description:
+   def __init__(self,device_id):self.id=device_id;self.name="Sensi-28DC69";self.model="ST75";self.category="thermostat"
+  class Discovery:
+   def __init__(self,device_id,paired):self.description=Description(device_id);self.paired=paired
+  class Controller:
+   aliases={}
+   async def async_discover(self,timeout):
+    for item in (Discovery("old-id",True),Discovery("new-id",False)):yield item
+  manager=HomeKitManager(Path(self.temp.name));manager.controller=Controller();devices=asyncio.run(manager._discover())
+  self.assertEqual(["new-id"],[item["id"] for item in devices]);self.assertEqual(["new-id"],list(manager.discoveries))
+
+ def test_pair_timeout_is_actionable(self):
+  manager=HomeKitManager(Path(self.temp.name));manager.loop=object();manager.controller=object()
+  def timeout(coro,seconds):
+   coro.close();raise __import__("concurrent.futures").futures.TimeoutError()
+  manager.run=timeout
+  with self.assertRaisesRegex(RuntimeError,"Pairing timed out"):
+   manager.pair("new-id","123-45-678","sensi")
+
  def test_homekit_second_sample_uses_named_rows(self):
   manager=HomeKitManager(Path(self.temp.name));manager._ensure_source("resideo-t10","t10","T10","T10")
   service="0000004A";manager.characteristics={("resideo-t10",1,1):{"service_type":service,"type":"00000011","value":20},("resideo-t10",1,2):{"service_type":service,"type":"00000010","value":51},("resideo-t10",1,3):{"service_type":service,"type":"00000035","value":22},("resideo-t10",1,4):{"service_type":service,"type":"0000000F","value":0},("resideo-t10",1,5):{"service_type":service,"type":"00000033","value":2}}
