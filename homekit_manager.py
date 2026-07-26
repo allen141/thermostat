@@ -1,6 +1,6 @@
 """Multi-accessory local HomeKit collector."""
 from __future__ import annotations
-import asyncio,json,os,re,sqlite3,threading
+import asyncio,concurrent.futures,json,os,re,sqlite3,threading
 from datetime import datetime,timezone
 from pathlib import Path
 
@@ -69,7 +69,13 @@ class HomeKitManager:
   found=[]; self.discoveries={}
   async for d in self.controller.async_discover(timeout=8):
    desc=d.description; did=str(getattr(desc,"id","")); linked_alias=next((alias for alias,pairing in self.controller.aliases.items() if str(getattr(pairing,"id","")).lower()==did.lower()),None); paired=bool(d.paired); self.discoveries[did]=d; found.append({"id":did,"name":str(getattr(desc,"name","HomeKit accessory")),"model":str(getattr(desc,"model","")),"paired":paired,"linked":bool(linked_alias),"linked_alias":linked_alias,"paired_elsewhere":paired and not linked_alias,"category":str(getattr(desc,"category",""))})
-  return found
+  preferred={}
+  for item in found:
+   key=(item["name"].strip().lower(),item["model"].strip().lower())
+   current=preferred.get(key)
+   if current is None or (item["linked"],not item["paired"])>(current["linked"],not current["paired"]):preferred[key]=item
+  visible=list(preferred.values());visible_ids={item["id"] for item in visible};self.discoveries={did:d for did,d in self.discoveries.items() if did in visible_ids}
+  return visible
  def discover(self):return self.run(self._discover(),20)
  async def _pair(self,device_id,code,unit_id):
   d=self.discoveries.get(device_id)
@@ -86,7 +92,8 @@ class HomeKitManager:
   digits=re.sub(r"\D","",code)
   if not re.fullmatch(r"\d{8}",digits):raise ValueError("Enter the eight digits shown on the thermostat")
   if unit_id not in (None,"t10","sensi"):raise ValueError("Unknown thermostat unit")
-  return self.run(self._pair(device_id,f"{digits[:3]}-{digits[3:5]}-{digits[5:]}",unit_id),90)
+  try:return self.run(self._pair(device_id,f"{digits[:3]}-{digits[3:5]}-{digits[5:]}",unit_id),90)
+  except concurrent.futures.TimeoutError as exc:raise RuntimeError("Pairing timed out. Put the thermostat back into HomeKit pairing mode, search again, and retry once.") from exc
  async def _setup_pairing(self,alias,pairing,name=None,model=None):
   self.pairings[alias]=pairing; self._ensure_source(alias,name=name,model=model); accessories=await pairing.list_accessories_and_characteristics(); events=set(); self.accessory_meta[alias]={"name":name or alias,"model":model or ""}
   for accessory in accessories:
