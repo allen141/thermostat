@@ -31,6 +31,9 @@ jobs:
           sh -n ops/deployer/tests/mock-docker
           sh -n ops/deployer/tests/test-deploy.sh
 
+      - name: Run regression tests
+        run: python3 -m unittest discover -s tests -v
+
       - name: Test deployment state machine
         run: ops/deployer/tests/test-deploy.sh
 
