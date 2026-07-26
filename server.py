@@ -117,11 +117,7 @@ def history_for(unit_id,hours):
    if samples:source=samples[-1]["source_id"];samples=[x for x in samples if x["source_id"]==source]
   transitions=rows(conn.execute("SELECT * FROM unit_transitions WHERE unit_id=? AND source_id=? AND occurred_at>=? ORDER BY id",(unit_id,source,cutoff)))
   observations=rows(conn.execute("SELECT * FROM observations WHERE (unit_id=? OR unit_id IS NULL) AND occurred_at>=? ORDER BY id",(unit_id,cutoff)))
-  if table_exists(conn,"homekit_events"):
-   events=rows(conn.execute("SELECT e.occurred_at,e.characteristic,e.value_json,e.source FROM homekit_events e JOIN unit_sources s ON s.external_id=e.alias WHERE s.unit_id=? AND e.occurred_at>=? AND e.source='event' ORDER BY e.id",(unit_id,cutoff)))
-  else:events=[]
- for event in events:event["kind"]=event.get("characteristic") or "HomeKit event";event["note"]=event.get("value_json") or "Value changed";event["unit_id"]=unit_id
- return {"unit_id":unit_id,"source_id":source,"samples":samples,"transitions":transitions,"observations":observations+events}
+ return {"unit_id":unit_id,"source_id":source,"samples":samples,"transitions":transitions,"observations":observations}
 def latest_for(unit_id):
  source=active_source(unit_id)
  with db() as conn:
