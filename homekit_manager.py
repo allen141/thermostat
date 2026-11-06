@@ -38,7 +38,7 @@ class HomeKitManager:
    if delay:await asyncio.sleep(delay)
    try:
     if self.poll_state.get(alias,{}).get("connection_state")!="connected":await self._setup_pairing(alias,pairing)
-    else:await self._poll_pairing(alias,pairing,store_sample=bool(self.poll_seconds))
+    else:await self._poll_pairing(alias,pairing)
     attempts=0; delay=self.poll_seconds or self.reconnect_seconds
    except asyncio.CancelledError:raise
    except Exception as exc:attempts+=1;delay=self._mark_retrying(alias,exc,attempts)

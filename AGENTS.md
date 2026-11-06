@@ -227,7 +227,8 @@ The production application runs:
 - with host networking;
 - with `/mnt/user/PrivateStorage/projects/thermostat/data:/app/data`;
 - with `HOST=0.0.0.0`, `PORT=8787`, `POLL_SECONDS=300`,
-  `HOMEKIT_POLL_SECONDS=0`, and `HOMEKIT_RECONNECT_SECONDS=60`;
+  `HOMEKIT_POLL_SECONDS=0`, and `HOMEKIT_RECONNECT_SECONDS=60` (health-check
+  reads are recorded even when explicit polling is disabled);
 - with restart policy `unless-stopped`;
 - with `no-new-privileges` and all Linux capabilities dropped; and
 - with one 50 MB JSON log file.
