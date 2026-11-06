@@ -51,6 +51,29 @@ class MultiUnitTests(unittest.TestCase):
    except asyncio.CancelledError:pass
    self.assertGreaterEqual(len(attempts),2);self.assertEqual("connected",manager.poll_state["sensi-test"]["connection_state"]);self.assertIsNone(manager.poll_state["sensi-test"]["connection_error"])
   asyncio.run(scenario())
+ def test_event_mode_records_health_reads_when_notifications_stop(self):
+  async def scenario():
+   manager=HomeKitManager(Path(self.temp.name));manager.poll_seconds=0;manager.reconnect_seconds=.01
+   alias="sensi-test";manager._ensure_source(alias,"sensi")
+   manager.characteristics={(alias,1,11):{"service_type":"0000004A","type":"00000011","value":20,"perms":["pr","ev"]},(alias,1,9):{"service_type":"0000004A","type":"0000000F","value":0,"perms":["pr","ev"]}}
+   manager._store_sample(alias,"snapshot");manager.poll_state[alias]={"connection_state":"connected"}
+   recorded=asyncio.Event()
+   class SilentPairing:
+    async def get_characteristics(self,keys):
+     recorded.set();return {(1,11):{"value":25},(1,9):{"value":2}}
+   task=asyncio.create_task(manager._supervise_pairing(alias,SilentPairing()))
+   try:await asyncio.wait_for(recorded.wait(),1)
+   finally:
+    task.cancel()
+    try:await task
+    except asyncio.CancelledError:pass
+   history=server.history_for("sensi",24)
+   self.assertEqual([68,77],[x["indoor_temp"] for x in history["samples"]])
+   self.assertEqual(["EquipmentOff","Cooling"],[x["operation_mode"] for x in history["samples"]])
+   self.assertTrue(any(x["field"]=="operation_mode" and x["to_value"]=="Cooling" for x in history["transitions"]))
+   self.assertIsNotNone(manager.poll_state[alias]["last_poll_at"])
+  asyncio.run(scenario())
+
  def test_discovery_distinguishes_recorder_link_from_other_homekit_pairing(self):
   class Description:
    def __init__(self,device_id,name):self.id=device_id;self.name=name;self.model="Thermostat";self.category="thermostat"
